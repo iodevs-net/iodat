@@ -89,15 +89,11 @@ func getSystemInfo(fs FileSystem, runner CommandRunner) inventory.SystemInfo {
 		si.SerialNumber = runWithTimeout(runner, CmdTimeoutFast, "dmidecode", "-s", "system-serial-number")
 	}
 	if si.SerialNumber == "" {
-		// Fallback 2: pkexec dmidecode (PolicyKit, puede pedir contraseña)
-		si.SerialNumber = runWithTimeout(runner, CmdTimeoutSlow, "pkexec", "dmidecode", "-s", "system-serial-number")
-	}
-	if si.SerialNumber == "" {
-		// Fallback 3: product_uuid como identificador de hardware
+		// Fallback 2: product_uuid como identificador de hardware
 		si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_uuid")
 	}
 	if si.SerialNumber == "" {
-		// Fallback 4: machine-id como último recurso (persistente por instalación)
+		// Fallback 3: machine-id (persistente, siempre sin root)
 		si.SerialNumber = readFile(fs, "/etc/machine-id")
 	}
 
