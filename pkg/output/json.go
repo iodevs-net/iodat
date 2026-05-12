@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/ionet-cl/iodat/pkg/inventory"
 )
@@ -42,8 +41,7 @@ func GenerateOutput(inv *inventory.Inventory, outputDir string) (string, string,
 	if hostname == "" || hostname == "DESCONOCIDO" {
 		hostname = "unknown"
 	}
-	timestamp := time.Now().Format("20060102_150405")
-	filename := fmt.Sprintf("ioDat_%s_%s.json", hostname, timestamp)
+	filename := fmt.Sprintf("ioDat_%s.json", hostname)
 
 	outputPath := filename
 	if outputDir != "" {
