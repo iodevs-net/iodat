@@ -94,13 +94,9 @@ func getSystemInfo(runner CommandRunner) (SystemInfo, error) {
 		Model        string `json:"Model"`
 		SystemType   string `json:"SystemType"`
 	}
-	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer,Model,SystemType`, &cs); err == nil && len(cs) > 0 {
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer,Model,SystemType`, &cs); err == nil && len(cs) > 0 {
 		si.Manufacturer = strings.TrimSpace(cs[0].Manufacturer)
 		si.Model = strings.TrimSpace(cs[0].Model)
-	} else {
-		// fallback a Get-WmiObject
-		si.Manufacturer = strings.TrimSpace(psGet(runner, "Get-WmiObject Win32_ComputerSystem", "Manufacturer"))
-		si.Model = strings.TrimSpace(psGet(runner, "Get-WmiObject Win32_ComputerSystem", "Model"))
 	}
 
 	si.SerialNumber = strings.TrimSpace(psGet(runner, "Get-CimInstance Win32_BIOS", "SerialNumber"))
@@ -130,16 +126,11 @@ func getCPU(runner CommandRunner) (CPUInfo, error) {
 		NumberOfLogicalProcessors int    `json:"NumberOfLogicalProcessors"`
 		MaxClockSpeed            int    `json:"MaxClockSpeed"`
 	}
-	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed`, &cpus); err == nil && len(cpus) > 0 {
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed`, &cpus); err == nil && len(cpus) > 0 {
 		cpu.Name = strings.TrimSpace(cpus[0].Name)
 		cpu.Cores = cpus[0].NumberOfCores
 		cpu.LogicalProcessors = cpus[0].NumberOfLogicalProcessors
 		cpu.MaxClockMHz = cpus[0].MaxClockSpeed
-	} else {
-		cpu.Name = psGet(runner, "Get-WmiObject Win32_Processor", "Name")
-		cpu.Cores = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfCores"))
-		cpu.LogicalProcessors = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfLogicalProcessors"))
-		cpu.MaxClockMHz = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "MaxClockSpeed"))
 	}
 
 	cpu.NameClean = cleanCPUName(cpu.Name)
