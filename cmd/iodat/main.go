@@ -16,6 +16,7 @@ import (
 	"os"
 
 	"github.com/ionet-cl/iodat/pkg/collector"
+	"github.com/ionet-cl/iodat/pkg/output"
 )
 
 // version se inyecta en tiempo de compilación via ldflags.
@@ -72,12 +73,12 @@ func main() {
 	}
 
 	if *toStdout {
-		if err := collector.PrintOutput(inv); err != nil {
+		if err := output.PrintOutput(inv); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		path, hash, err := collector.GenerateOutput(inv, dir)
+		path, hash, err := output.GenerateOutput(inv, dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

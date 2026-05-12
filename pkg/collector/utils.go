@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/ionet-cl/iodat/pkg/inventory"
 )
 
 // cleanCPUName elimina marcas registradas, sufijos de velocidad y la palabra "CPU"
@@ -69,18 +71,18 @@ func ParseFloat64(s string) float64 {
 
 // FromBlocks convierte un contador de bloques de 512 bytes (como los que
 // reporta /sys/block/*/size en Linux) a ByteSize.
-func FromBlocks(blocks int64) ByteSize {
-	return ByteSize(blocks) * 512
+func FromBlocks(blocks int64) inventory.ByteSize {
+	return inventory.ByteSize(blocks) * 512
 }
 
 // FromBytes crea un ByteSize a partir de un entero de bytes en crudo.
-func FromBytes(bytes int64) ByteSize {
-	return ByteSize(bytes)
+func FromBytes(bytes int64) inventory.ByteSize {
+	return inventory.ByteSize(bytes)
 }
 
 // ParseByteSize parsea strings con unidad como "500.24 GB", "1 TB", "256 MB"
 // y retorna un ByteSize. Soporta GB, TB, MB, KB.
-func ParseByteSize(s string) (ByteSize, error) {
+func ParseByteSize(s string) (inventory.ByteSize, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("empty size string")
@@ -96,13 +98,13 @@ func ParseByteSize(s string) (ByteSize, error) {
 	}
 	switch m[2] {
 	case "TB":
-		return ByteSize(val * float64(TB)), nil
+		return inventory.ByteSize(val * float64(inventory.TB)), nil
 	case "GB":
-		return ByteSize(val * float64(GB)), nil
+		return inventory.ByteSize(val * float64(inventory.GB)), nil
 	case "MB":
-		return ByteSize(val * float64(MB)), nil
+		return inventory.ByteSize(val * float64(inventory.MB)), nil
 	case "KB":
-		return ByteSize(val * float64(KB)), nil
+		return inventory.ByteSize(val * float64(inventory.KB)), nil
 	}
 	return 0, fmt.Errorf("unknown unit: %s", m[2])
 }

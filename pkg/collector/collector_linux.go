@@ -5,6 +5,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"github.com/ionet-cl/iodat/pkg/inventory"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,8 +35,8 @@ func readFile(fs FileSystem, path string) string {
 }
 
 // Run recolecta todo el inventario en Linux.
-func Run(runner CommandRunner, fs FileSystem) (*Inventory, error) {
-	inv := &Inventory{
+func Run(runner CommandRunner, fs FileSystem) (*inventory.Inventory, error) {
+	inv := &inventory.Inventory{
 		CollectorVersion: "1.0.0",
 	}
 	var errs PartialErrors
@@ -73,8 +74,8 @@ func Run(runner CommandRunner, fs FileSystem) (*Inventory, error) {
 	return inv, errs.Err()
 }
 
-func getSystemInfo(fs FileSystem, runner CommandRunner) SystemInfo {
-	si := SystemInfo{}
+func getSystemInfo(fs FileSystem, runner CommandRunner) inventory.SystemInfo {
+	si := inventory.SystemInfo{}
 	si.Manufacturer = readFile(fs, "/sys/class/dmi/id/sys_vendor")
 	si.Model = readFile(fs, "/sys/class/dmi/id/product_name")
 	si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_serial")
@@ -98,8 +99,8 @@ func getSystemInfo(fs FileSystem, runner CommandRunner) SystemInfo {
 	return si
 }
 
-func getCPU(fs FileSystem) CPUInfo {
-	cpu := CPUInfo{}
+func getCPU(fs FileSystem) inventory.CPUInfo {
+	cpu := inventory.CPUInfo{}
 	data, err := fs.ReadFile("/proc/cpuinfo")
 	if err != nil {
 		return cpu
@@ -145,8 +146,8 @@ func getCPU(fs FileSystem) CPUInfo {
 	return cpu
 }
 
-func getRAM(fs FileSystem) RAMInfo {
-	ram := RAMInfo{}
+func getRAM(fs FileSystem) inventory.RAMInfo {
+	ram := inventory.RAMInfo{}
 	data, err := fs.ReadFile("/proc/meminfo")
 	if err != nil {
 		return ram
@@ -167,8 +168,8 @@ func getRAM(fs FileSystem) RAMInfo {
 	return ram
 }
 
-func getStorage(fs FileSystem) []StorageInfo {
-	var result []StorageInfo
+func getStorage(fs FileSystem) []inventory.StorageInfo {
+	var result []inventory.StorageInfo
 
 	devices, err := fs.ReadDir("/sys/block")
 	if err != nil {
@@ -181,8 +182,8 @@ func getStorage(fs FileSystem) []StorageInfo {
 			continue
 		}
 
-		s := StorageInfo{
-			Model: readFile(fs, fmt.Sprintf("/sys/block/%s/device/model", name)),
+		s := inventory.StorageInfo{
+			Model:  readFile(fs, fmt.Sprintf("/sys/block/%s/device/model", name)),
 			SizeGB: FromBlocks(ParseInt64(readFile(fs, fmt.Sprintf("/sys/block/%s/size", name)))).GB(),
 		}
 
@@ -219,8 +220,8 @@ func getStorage(fs FileSystem) []StorageInfo {
 	return result
 }
 
-func getMotherboard(fs FileSystem) MotherboardInfo {
-	mb := MotherboardInfo{}
+func getMotherboard(fs FileSystem) inventory.MotherboardInfo {
+	mb := inventory.MotherboardInfo{}
 	mb.Manufacturer = readFile(fs, "/sys/class/dmi/id/board_vendor")
 	mb.Product = readFile(fs, "/sys/class/dmi/id/board_name")
 	mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/board_serial")
@@ -229,8 +230,8 @@ func getMotherboard(fs FileSystem) MotherboardInfo {
 	return mb
 }
 
-func getGPU(runner CommandRunner, fs FileSystem) []GPUInfo {
-	var result []GPUInfo
+func getGPU(runner CommandRunner, fs FileSystem) []inventory.GPUInfo {
+	var result []inventory.GPUInfo
 
 	// Método 1: lspci (estándar en la mayoría de distros)
 	if out := runWithTimeout(runner, CmdTimeoutMedium, "lspci", "-mm"); out != "" {
@@ -239,7 +240,7 @@ func getGPU(runner CommandRunner, fs FileSystem) []GPUInfo {
 			if re.MatchString(line) {
 				parts := strings.Split(line, "\"")
 				if len(parts) >= 5 {
-					result = append(result, GPUInfo{
+					result = append(result, inventory.GPUInfo{
 						Name: strings.TrimSpace(parts[3]),
 					})
 				}
@@ -260,7 +261,7 @@ func getGPU(runner CommandRunner, fs FileSystem) []GPUInfo {
 			vendor := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/vendor", name))
 			devID := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/device", name))
 			if vendor != "" || devID != "" {
-				result = append(result, GPUInfo{
+				result = append(result, inventory.GPUInfo{
 					Name: fmt.Sprintf("GPU %s:%s", strings.TrimPrefix(vendor, "0x"), strings.TrimPrefix(devID, "0x")),
 				})
 			}
@@ -270,8 +271,8 @@ func getGPU(runner CommandRunner, fs FileSystem) []GPUInfo {
 	return result
 }
 
-func getMonitors(fs FileSystem) []MonitorInfo {
-	var result []MonitorInfo
+func getMonitors(fs FileSystem) []inventory.MonitorInfo {
+	var result []inventory.MonitorInfo
 	devices, err := fs.ReadDir("/sys/class/drm/")
 	if err != nil {
 		return result
@@ -290,7 +291,7 @@ func getMonitors(fs FileSystem) []MonitorInfo {
 			continue
 		}
 
-		mi := MonitorInfo{}
+		mi := inventory.MonitorInfo{}
 		// Manufacturer ID (bytes 8-9 en EDID)
 		if len(edid) > 10 {
 			mf := string([]byte{edid[8] + 'A' - 1, edid[9] + 'A' - 1, edid[10] + 'A' - 1})
@@ -313,8 +314,8 @@ func getMonitors(fs FileSystem) []MonitorInfo {
 	return result
 }
 
-func getNetwork(runner CommandRunner, fs FileSystem) []NetworkInfo {
-	var result []NetworkInfo
+func getNetwork(runner CommandRunner, fs FileSystem) []inventory.NetworkInfo {
+	var result []inventory.NetworkInfo
 
 	interfaces, err := fs.ReadDir("/sys/class/net")
 	if err != nil {
@@ -326,7 +327,7 @@ func getNetwork(runner CommandRunner, fs FileSystem) []NetworkInfo {
 			continue
 		}
 
-		n := NetworkInfo{
+		n := inventory.NetworkInfo{
 			Name:       name,
 			MACAddress: readFile(fs, fmt.Sprintf("/sys/class/net/%s/address", name)),
 		}

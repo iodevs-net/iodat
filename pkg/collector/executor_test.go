@@ -36,7 +36,7 @@ func (f *FakeCommandRunner) Reset() {
 // FakeFileSystem returns pre-loaded content for files and directories.
 // Used in tests to avoid reading real /proc and /sys files.
 type FakeFileSystem struct {
-	Files  map[string]string // path → file content
+	Files  map[string]string   // path → file content
 	Dirs   map[string][]string // path → directory entries
 	Called []string            // record of accessed paths
 }

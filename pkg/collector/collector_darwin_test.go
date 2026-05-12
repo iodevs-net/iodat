@@ -23,7 +23,7 @@ func TestGetSystemInfo_Darwin(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
 			"system_profiler SPHardwareDataType -json": readFixture("darwin", "system_profiler_SPHardwareDataType.json"),
-			"system_profiler SPSoftwareDataType -json":  readFixture("darwin", "system_profiler_SPSoftwareDataType.json"),
+			"system_profiler SPSoftwareDataType -json": readFixture("darwin", "system_profiler_SPSoftwareDataType.json"),
 			"uname -m": "arm64",
 		},
 	}
@@ -53,10 +53,10 @@ func TestGetSystemInfo_Darwin(t *testing.T) {
 func TestGetCPU_Darwin(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			"sysctl -n machdep.cpu.brand_string":  "Apple M1 Pro",
-			"sysctl -n machdep.cpu.core_count":    "10",
-			"sysctl -n machdep.cpu.thread_count":  "10",
-			"sysctl -n hw.cpufrequency_max":       "",
+			"sysctl -n machdep.cpu.brand_string": "Apple M1 Pro",
+			"sysctl -n machdep.cpu.core_count":   "10",
+			"sysctl -n machdep.cpu.thread_count": "10",
+			"sysctl -n hw.cpufrequency_max":      "",
 		},
 	}
 
@@ -80,8 +80,8 @@ func TestGetCPU_Darwin(t *testing.T) {
 func TestGetRAM_Darwin(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			"sysctl -n hw.memsize":                          "34359738368",
-			"system_profiler SPMemoryDataType -json":         readFixture("darwin", "system_profiler_SPMemoryDataType.json"),
+			"sysctl -n hw.memsize":                   "34359738368",
+			"system_profiler SPMemoryDataType -json": readFixture("darwin", "system_profiler_SPMemoryDataType.json"),
 		},
 	}
 
@@ -133,9 +133,9 @@ func TestGetStorage_Darwin(t *testing.T) {
 func TestGetMotherboard_Darwin(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			"sysctl -n hw.model":            "MacBookPro18,3",
-			"ioreg -l":                      `  | "IOPlatformSerialNumber" = "FGHIJKLMNOPQ"`,
-			"sysctl -n kern.osversion":      "23F79",
+			"sysctl -n hw.model":       "MacBookPro18,3",
+			"ioreg -l":                 `  | "IOPlatformSerialNumber" = "FGHIJKLMNOPQ"`,
+			"sysctl -n kern.osversion": "23F79",
 		},
 	}
 
@@ -201,26 +201,26 @@ func TestGetMonitors_Darwin(t *testing.T) {
 func TestRun_Darwin(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			"hostname":                                   "macbook-pro",
-			"system_profiler SPHardwareDataType -json":    readFixture("darwin", "system_profiler_SPHardwareDataType.json"),
-			"system_profiler SPSoftwareDataType -json":     readFixture("darwin", "system_profiler_SPSoftwareDataType.json"),
-			"uname -m":                                    "arm64",
-			"sysctl -n machdep.cpu.brand_string":          "Apple M1 Pro",
-			"sysctl -n machdep.cpu.core_count":            "10",
-			"sysctl -n machdep.cpu.thread_count":          "10",
-			"sysctl -n hw.cpufrequency_max":               "",
-			"sysctl -n hw.memsize":                        "34359738368",
-			"system_profiler SPMemoryDataType -json":      readFixture("darwin", "system_profiler_SPMemoryDataType.json"),
-			"system_profiler SPStorageDataType -json":     readFixture("darwin", "system_profiler_SPStorageDataType.json"),
-			"sysctl -n hw.model":                          "MacBookPro18,3",
-			"ioreg -l":                                    `  | "IOPlatformSerialNumber" = "FGHIJKLMNOPQ"`,
-			"sysctl -n kern.osversion":                    "23F79",
-			"system_profiler SPDisplaysDataType -json":    readFixture("darwin", "system_profiler_SPDisplaysDataType.json"),
-			"ifconfig -l":                                 "lo0 en0 en1",
-			"ifconfig en0":                                "en0: ... ether 00:11:22:33:44:55 ... inet 10.0.0.100",
-			"ifconfig en0 media":                          "autoselect 1000baseT <full-duplex>",
-			"ifconfig en1":                                "en1: ... ether aa:bb:cc:dd:ee:ff",
-			"ifconfig en1 media":                          "autoselect",
+			"hostname": "macbook-pro",
+			"system_profiler SPHardwareDataType -json": readFixture("darwin", "system_profiler_SPHardwareDataType.json"),
+			"system_profiler SPSoftwareDataType -json": readFixture("darwin", "system_profiler_SPSoftwareDataType.json"),
+			"uname -m":                                 "arm64",
+			"sysctl -n machdep.cpu.brand_string":       "Apple M1 Pro",
+			"sysctl -n machdep.cpu.core_count":         "10",
+			"sysctl -n machdep.cpu.thread_count":       "10",
+			"sysctl -n hw.cpufrequency_max":            "",
+			"sysctl -n hw.memsize":                     "34359738368",
+			"system_profiler SPMemoryDataType -json":   readFixture("darwin", "system_profiler_SPMemoryDataType.json"),
+			"system_profiler SPStorageDataType -json":  readFixture("darwin", "system_profiler_SPStorageDataType.json"),
+			"sysctl -n hw.model":                       "MacBookPro18,3",
+			"ioreg -l":                                 `  | "IOPlatformSerialNumber" = "FGHIJKLMNOPQ"`,
+			"sysctl -n kern.osversion":                 "23F79",
+			"system_profiler SPDisplaysDataType -json": readFixture("darwin", "system_profiler_SPDisplaysDataType.json"),
+			"ifconfig -l":                              "lo0 en0 en1",
+			"ifconfig en0":                             "en0: ... ether 00:11:22:33:44:55 ... inet 10.0.0.100",
+			"ifconfig en0 media":                       "autoselect 1000baseT <full-duplex>",
+			"ifconfig en1":                             "en1: ... ether aa:bb:cc:dd:ee:ff",
+			"ifconfig en1 media":                       "autoselect",
 		},
 	}
 

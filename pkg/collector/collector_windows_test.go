@@ -36,8 +36,8 @@ func TestGetSystemInfo_Windows(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
 			psJSONKey("Get-CimInstance Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer,Model,SystemType"): readFixture("windows", "cim_computersystem.json"),
-			psGetKey("Get-CimInstance Win32_BIOS", "SerialNumber"):                                                         "ABC123",
-			psJSONKey("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture"):               `[{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}]`,
+			psGetKey("Get-CimInstance Win32_BIOS", "SerialNumber"):                                                            "ABC123",
+			psJSONKey("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture"):                 `[{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}]`,
 		},
 	}
 
@@ -99,7 +99,7 @@ func TestGetCPU_Windows(t *testing.T) {
 func TestGetRAM_Windows(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			psGetKey("Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory"): "17179869184",
+			psGetKey("Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory"):                                                    "17179869184",
 			psJSONKey("Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,MemoryType,ConfiguredClockSpeed"): readFixture("windows", "cim_physical_memory.json"),
 		},
 	}
@@ -259,18 +259,18 @@ func TestRun_Windows(t *testing.T) {
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
 			psKey("hostname"): "PC-CONTABILIDAD",
-			psJSONKey("Get-CimInstance Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer,Model,SystemType"):           readFixture("windows", "cim_computersystem.json"),
-			psGetKey("Get-CimInstance Win32_BIOS", "SerialNumber"):                                                                    "ABC123",
-			psJSONKey("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture"):                          `[{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}]`,
-			psJSONKey("Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed"): readFixture("windows", "cim_processor.json"),
-			psGetKey("Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory"):                                                   "17179869184",
-			psJSONKey("Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,MemoryType,ConfiguredClockSpeed"): readFixture("windows", "cim_physical_memory.json"),
-			psJSONKey("Get-CimInstance Win32_DiskDrive | Select-Object Model,SerialNumber,Size,InterfaceType,MediaType"):              readFixture("windows", "cim_diskdrive.json"),
-			psJSONKey("Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product,SerialNumber"):                            readFixture("windows", "cim_baseboard.json"),
-			psJSONKey("Get-CimInstance Win32_BIOS | Select-Object SMBIOSBIOSVersion,ReleaseDate"):                                     readFixture("windows", "cim_bios.json"),
-			psJSONKey("Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion"):                          readFixture("windows", "cim_videocontroller.json"),
-			psJSONKey(`Get-CimInstance WmiMonitorID -Namespace root\wmi | Select-Object MonitorManufacturerID,Name,MonitorID,ScreenWidth,ScreenHeight,SerialNumberID`): `[]`,
-			psJSONKey("Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.NetEnabled -eq $true } | Select-Object Name,MACAddress,Speed,NetEnabled,DhcpEnabled"): readFixture("windows", "cim_network_adapter.json"),
+			psJSONKey("Get-CimInstance Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer,Model,SystemType"):                                                              readFixture("windows", "cim_computersystem.json"),
+			psGetKey("Get-CimInstance Win32_BIOS", "SerialNumber"):                                                                                                                         "ABC123",
+			psJSONKey("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture"):                                                                              `[{"Caption":"Microsoft Windows 11 Pro","Version":"10.0.22631","OSArchitecture":"64-bit"}]`,
+			psJSONKey("Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed"):                                      readFixture("windows", "cim_processor.json"),
+			psGetKey("Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory"):                                                                                                        "17179869184",
+			psJSONKey("Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,MemoryType,ConfiguredClockSpeed"):                                                     readFixture("windows", "cim_physical_memory.json"),
+			psJSONKey("Get-CimInstance Win32_DiskDrive | Select-Object Model,SerialNumber,Size,InterfaceType,MediaType"):                                                                   readFixture("windows", "cim_diskdrive.json"),
+			psJSONKey("Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product,SerialNumber"):                                                                                 readFixture("windows", "cim_baseboard.json"),
+			psJSONKey("Get-CimInstance Win32_BIOS | Select-Object SMBIOSBIOSVersion,ReleaseDate"):                                                                                          readFixture("windows", "cim_bios.json"),
+			psJSONKey("Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion"):                                                                               readFixture("windows", "cim_videocontroller.json"),
+			psJSONKey(`Get-CimInstance WmiMonitorID -Namespace root\wmi | Select-Object MonitorManufacturerID,Name,MonitorID,ScreenWidth,ScreenHeight,SerialNumberID`):                     `[]`,
+			psJSONKey("Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.NetEnabled -eq $true } | Select-Object Name,MACAddress,Speed,NetEnabled,DhcpEnabled"):                      readFixture("windows", "cim_network_adapter.json"),
 			psJSONKey(`Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPAddress -ne $null } | Select-Object Index,IPAddress,@{N='DHCPEnabled';E={$_.DHCPEnabled}}`): readFixture("windows", "cim_net_adapter_config.json"),
 		},
 	}

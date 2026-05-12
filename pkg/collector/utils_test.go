@@ -1,6 +1,10 @@
 package collector
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ionet-cl/iodat/pkg/inventory"
+)
 
 func TestCleanCPUName(t *testing.T) {
 	tests := []struct {
@@ -82,11 +86,11 @@ func TestParseFloat64(t *testing.T) {
 func TestFromBlocks(t *testing.T) {
 	tests := []struct {
 		input    int64
-		expected ByteSize
+		expected inventory.ByteSize
 	}{
-		{1000215216, ByteSize(1000215216) * 512},
+		{1000215216, inventory.ByteSize(1000215216) * 512},
 		{0, 0},
-		{2000430432, ByteSize(2000430432) * 512},
+		{2000430432, inventory.ByteSize(2000430432) * 512},
 	}
 	for _, tc := range tests {
 		got := FromBlocks(tc.input)
@@ -97,8 +101,8 @@ func TestFromBlocks(t *testing.T) {
 }
 
 func TestFromBytes(t *testing.T) {
-	if got := FromBytes(17179869184); got != ByteSize(17179869184) {
-		t.Errorf("FromBytes(17179869184) = %d, want %d", got, ByteSize(17179869184))
+	if got := FromBytes(17179869184); got != inventory.ByteSize(17179869184) {
+		t.Errorf("FromBytes(17179869184) = %d, want %d", got, inventory.ByteSize(17179869184))
 	}
 	if got := FromBytes(0); got != 0 {
 		t.Errorf("FromBytes(0) = %d, want 0", got)
@@ -108,17 +112,17 @@ func TestFromBytes(t *testing.T) {
 func TestParseByteSize(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected ByteSize
+		expected inventory.ByteSize
 		wantErr  bool
 	}{
-		{"500.24 GB", ByteSize(500240000000), false},  // 500.24 × 1e9
+		{"500.24 GB", inventory.ByteSize(500240000000), false},
 		{"1 TB", 1000000000000, false},
 		{"256 MB", 256000000, false},
 		{"512 KB", 512000, false},
 		{"", 0, true},
 		{"abc", 0, true},
 		{"2.5 TB", 2500000000000, false},
-		{"  16  GB  ", 16000000000, false}, // with spaces
+		{"  16  GB  ", 16000000000, false},
 	}
 	for _, tc := range tests {
 		got, err := ParseByteSize(tc.input)
@@ -140,13 +144,13 @@ func TestParseByteSize(t *testing.T) {
 
 func TestByteSizeGB(t *testing.T) {
 	tests := []struct {
-		input    ByteSize
+		input    inventory.ByteSize
 		expected int
 	}{
-		{500 * GB, 500},
-		{TB, 1000},
+		{500 * inventory.GB, 500},
+		{inventory.TB, 1000},
 		{0, 0},
-		{1500 * MB, 1},  // 1.5 GB → trunca a 1
+		{1500 * inventory.MB, 1},
 	}
 	for _, tc := range tests {
 		got := tc.input.GB()

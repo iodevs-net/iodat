@@ -1,31 +1,31 @@
-// Package collector recolecta información del sistema y genera un
-// JSON estructurado compatible con ioDesk-3 InventoryImportService.
-package collector
+// Package inventory defines the data model for system inventory information.
+// It is a pure data package with no dependencies on other ioDat packages.
+package inventory
 
 // Inventory representa la información completa de un equipo.
 type Inventory struct {
-	CollectorVersion string           `json:"collector_version"`
-	CollectorHash    string           `json:"collector_hash"`
-	Hostname         string           `json:"hostname"`
-	System           SystemInfo       `json:"system"`
-	CPU              CPUInfo          `json:"cpu"`
-	RAM              RAMInfo          `json:"ram"`
-	Storage          []StorageInfo    `json:"storage"`
-	Motherboard      MotherboardInfo  `json:"motherboard"`
-	GPU              []GPUInfo        `json:"gpu"`
-	Monitors         []MonitorInfo    `json:"monitors"`
-	Network          []NetworkInfo    `json:"network"`
-	Software         []SoftwareInfo   `json:"installed_software"`
+	CollectorVersion string          `json:"collector_version"`
+	CollectorHash    string          `json:"collector_hash"`
+	Hostname         string          `json:"hostname"`
+	System           SystemInfo      `json:"system"`
+	CPU              CPUInfo         `json:"cpu"`
+	RAM              RAMInfo         `json:"ram"`
+	Storage          []StorageInfo   `json:"storage"`
+	Motherboard      MotherboardInfo `json:"motherboard"`
+	GPU              []GPUInfo       `json:"gpu"`
+	Monitors         []MonitorInfo   `json:"monitors"`
+	Network          []NetworkInfo   `json:"network"`
+	Software         []SoftwareInfo  `json:"installed_software"`
 }
 
 // SystemInfo representa el fabricante, modelo y OS.
 type SystemInfo struct {
-	Manufacturer    string `json:"manufacturer"`
-	Model           string `json:"model"`
-	SerialNumber    string `json:"serial_number"`
-	OS              string `json:"os"`
-	OSVersion       string `json:"os_version"`
-	OSArchitecture  string `json:"os_architecture"`
+	Manufacturer   string `json:"manufacturer"`
+	Model          string `json:"model"`
+	SerialNumber   string `json:"serial_number"`
+	OS             string `json:"os"`
+	OSVersion      string `json:"os_version"`
+	OSArchitecture string `json:"os_architecture"`
 }
 
 // CPUInfo representa el procesador.
@@ -39,9 +39,9 @@ type CPUInfo struct {
 
 // RAMInfo representa la memoria RAM.
 type RAMInfo struct {
-	TotalGB   int         `json:"total_gb"`
-	Formatted string      `json:"formatted"`
-	Slots     []RAMSlot   `json:"slots"`
+	TotalGB   int       `json:"total_gb"`
+	Formatted string    `json:"formatted"`
+	Slots     []RAMSlot `json:"slots"`
 }
 
 // RAMSlot representa un módulo de memoria.
@@ -87,11 +87,11 @@ type MonitorInfo struct {
 
 // NetworkInfo representa un adaptador de red.
 type NetworkInfo struct {
-	Name       string `json:"name"`
-	MACAddress string `json:"mac_address"`
-	IPAddress  string `json:"ip_address"`
-	DHCPEnabled bool  `json:"dhcp_enabled"`
-	Speed      int64  `json:"speed"`
+	Name        string `json:"name"`
+	MACAddress  string `json:"mac_address"`
+	IPAddress   string `json:"ip_address"`
+	DHCPEnabled bool   `json:"dhcp_enabled"`
+	Speed       int64  `json:"speed"`
 }
 
 // SoftwareInfo representa un programa instalado.

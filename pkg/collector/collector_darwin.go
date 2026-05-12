@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ionet-cl/iodat/pkg/inventory"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,8 +27,8 @@ func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, ar
 
 // Run recolecta todo el inventario en macOS.
 // Compatible con macOS 12 (Monterey) en adelante.
-func Run(runner CommandRunner) (*Inventory, error) {
-	inv := &Inventory{
+func Run(runner CommandRunner) (*inventory.Inventory, error) {
+	inv := &inventory.Inventory{
 		CollectorVersion: "1.0.0",
 	}
 	var errs PartialErrors
@@ -76,8 +77,8 @@ func Run(runner CommandRunner) (*Inventory, error) {
 	return inv, errs.Err()
 }
 
-func getSystemInfo(runner CommandRunner) SystemInfo {
-	si := SystemInfo{}
+func getSystemInfo(runner CommandRunner) inventory.SystemInfo {
+	si := inventory.SystemInfo{}
 	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPHardwareDataType", "-json")
 
 	var hw struct {
@@ -111,8 +112,8 @@ func getSystemInfo(runner CommandRunner) SystemInfo {
 	return si
 }
 
-func getCPU(runner CommandRunner) CPUInfo {
-	cpu := CPUInfo{}
+func getCPU(runner CommandRunner) inventory.CPUInfo {
+	cpu := inventory.CPUInfo{}
 	cpu.Name = runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "machdep.cpu.brand_string")
 	cpu.NameClean = cleanCPUName(cpu.Name)
 
@@ -130,8 +131,8 @@ func getCPU(runner CommandRunner) CPUInfo {
 	return cpu
 }
 
-func getRAM(runner CommandRunner) RAMInfo {
-	ram := RAMInfo{}
+func getRAM(runner CommandRunner) inventory.RAMInfo {
+	ram := inventory.RAMInfo{}
 	memStr := runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "hw.memsize")
 	memBytes, _ := strconv.ParseFloat(memStr, 64)
 	ram.TotalGB = int(memBytes / (1024 * 1024 * 1024))
@@ -144,10 +145,10 @@ func getRAM(runner CommandRunner) RAMInfo {
 	var mem struct {
 		SPMemoryDataType []struct {
 			Items []struct {
-				Name     string `json:"_name"`
-				Size     string `json:"dimm_size"`
-				Type     string `json:"dimm_type"`
-				Speed    string `json:"dimm_speed"`
+				Name  string `json:"_name"`
+				Size  string `json:"dimm_size"`
+				Type  string `json:"dimm_type"`
+				Speed string `json:"dimm_speed"`
 			} `json:"_items"`
 		} `json:"SPMemoryDataType"`
 	}
@@ -155,7 +156,7 @@ func getRAM(runner CommandRunner) RAMInfo {
 		for _, slot := range mem.SPMemoryDataType[0].Items {
 			sizeGB := MustGB(strings.TrimSpace(slot.Size))
 			speed, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(slot.Speed), " MHz"))
-			ram.Slots = append(ram.Slots, RAMSlot{
+			ram.Slots = append(ram.Slots, inventory.RAMSlot{
 				BankLabel: strings.TrimSpace(slot.Name),
 				SizeGB:    sizeGB,
 				SpeedMHz:  speed,
@@ -167,8 +168,8 @@ func getRAM(runner CommandRunner) RAMInfo {
 	return ram
 }
 
-func getStorage(runner CommandRunner) []StorageInfo {
-	var result []StorageInfo
+func getStorage(runner CommandRunner) []inventory.StorageInfo {
+	var result []inventory.StorageInfo
 
 	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPStorageDataType", "-json")
 	var storage struct {
@@ -197,7 +198,7 @@ func getStorage(runner CommandRunner) []StorageInfo {
 				diskType = "HDD"
 			}
 
-			result = append(result, StorageInfo{
+			result = append(result, inventory.StorageInfo{
 				Model:  model,
 				SizeGB: sizeGB,
 				Type:   diskType,
@@ -208,8 +209,8 @@ func getStorage(runner CommandRunner) []StorageInfo {
 	return result
 }
 
-func getMotherboard(runner CommandRunner) MotherboardInfo {
-	mb := MotherboardInfo{}
+func getMotherboard(runner CommandRunner) inventory.MotherboardInfo {
+	mb := inventory.MotherboardInfo{}
 	mb.Manufacturer = "Apple"
 	mb.Product = runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "hw.model")
 
@@ -225,8 +226,8 @@ func getMotherboard(runner CommandRunner) MotherboardInfo {
 	return mb
 }
 
-func getGPU(runner CommandRunner) []GPUInfo {
-	var result []GPUInfo
+func getGPU(runner CommandRunner) []inventory.GPUInfo {
+	var result []inventory.GPUInfo
 
 	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPDisplaysDataType", "-json")
 	var disp struct {
@@ -241,7 +242,7 @@ func getGPU(runner CommandRunner) []GPUInfo {
 	}
 	if err := json.Unmarshal([]byte(sp), &disp); err == nil {
 		for _, d := range disp.SPDisplaysDataType {
-			gpu := GPUInfo{
+			gpu := inventory.GPUInfo{
 				Name: strings.TrimSpace(d.ChipsetModel),
 			}
 			// Parsear VRAM: "4096 MB" → 4
@@ -261,8 +262,8 @@ func getGPU(runner CommandRunner) []GPUInfo {
 	return result
 }
 
-func getMonitors(runner CommandRunner) []MonitorInfo {
-	var result []MonitorInfo
+func getMonitors(runner CommandRunner) []inventory.MonitorInfo {
+	var result []inventory.MonitorInfo
 
 	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPDisplaysDataType", "-json")
 	var disp struct {
@@ -277,7 +278,7 @@ func getMonitors(runner CommandRunner) []MonitorInfo {
 	if err := json.Unmarshal([]byte(sp), &disp); err == nil {
 		for _, d := range disp.SPDisplaysDataType {
 			for _, display := range d.Displays {
-				mi := MonitorInfo{
+				mi := inventory.MonitorInfo{
 					Model:      strings.TrimSpace(display.Name),
 					Resolution: strings.TrimSpace(display.Resolution),
 				}
@@ -294,8 +295,8 @@ func getMonitors(runner CommandRunner) []MonitorInfo {
 	return result
 }
 
-func getNetwork(runner CommandRunner) []NetworkInfo {
-	var result []NetworkInfo
+func getNetwork(runner CommandRunner) []inventory.NetworkInfo {
+	var result []inventory.NetworkInfo
 
 	// Listar interfaces con ifconfig -l (formato estable, espacio-separado)
 	ifaces := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", "-l")
@@ -308,7 +309,7 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 			continue
 		}
 
-		ni := NetworkInfo{Name: name}
+		ni := inventory.NetworkInfo{Name: name}
 
 		// Obtener detalle por interfaz
 		out := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", name)
@@ -354,5 +355,3 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 
 	return result
 }
-
-

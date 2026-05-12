@@ -6,14 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ionet-cl/iodat/pkg/inventory"
 	"strings"
 	"time"
 )
 
 // Run recolecta todo el inventario en Windows usando PowerShell + WMI.
 // Compatible con Windows 10/11, Server 2016+.
-func Run(runner CommandRunner) (*Inventory, error) {
-	inv := &Inventory{
+func Run(runner CommandRunner) (*inventory.Inventory, error) {
+	inv := &inventory.Inventory{
 		CollectorVersion: "1.0.0",
 	}
 
@@ -83,8 +84,8 @@ func getHostname(runner CommandRunner) string {
 
 // ── System ───────────────────────────────────────
 
-func getSystemInfo(runner CommandRunner) (SystemInfo, error) {
-	si := SystemInfo{}
+func getSystemInfo(runner CommandRunner) (inventory.SystemInfo, error) {
+	si := inventory.SystemInfo{}
 
 	var cs []struct {
 		Manufacturer string `json:"Manufacturer"`
@@ -114,14 +115,14 @@ func getSystemInfo(runner CommandRunner) (SystemInfo, error) {
 
 // ── CPU ──────────────────────────────────────────
 
-func getCPU(runner CommandRunner) (CPUInfo, error) {
-	cpu := CPUInfo{}
+func getCPU(runner CommandRunner) (inventory.CPUInfo, error) {
+	cpu := inventory.CPUInfo{}
 
 	var cpus []struct {
-		Name                     string `json:"Name"`
-		NumberOfCores            int    `json:"NumberOfCores"`
+		Name                      string `json:"Name"`
+		NumberOfCores             int    `json:"NumberOfCores"`
 		NumberOfLogicalProcessors int    `json:"NumberOfLogicalProcessors"`
-		MaxClockSpeed            int    `json:"MaxClockSpeed"`
+		MaxClockSpeed             int    `json:"MaxClockSpeed"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed`, &cpus); err == nil && len(cpus) > 0 {
 		cpu.Name = strings.TrimSpace(cpus[0].Name)
@@ -136,8 +137,8 @@ func getCPU(runner CommandRunner) (CPUInfo, error) {
 
 // ── RAM ──────────────────────────────────────────
 
-func getRAM(runner CommandRunner) (RAMInfo, error) {
-	ram := RAMInfo{}
+func getRAM(runner CommandRunner) (inventory.RAMInfo, error) {
+	ram := inventory.RAMInfo{}
 
 	totalBytesStr := psGet(runner, "Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory")
 	totalBytes := ParseFloat64(totalBytesStr)
@@ -155,7 +156,7 @@ func getRAM(runner CommandRunner) (RAMInfo, error) {
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,MemoryType,ConfiguredClockSpeed`, &slots); err == nil {
 		for _, slot := range slots {
-			ram.Slots = append(ram.Slots, RAMSlot{
+			ram.Slots = append(ram.Slots, inventory.RAMSlot{
 				BankLabel: strings.TrimSpace(slot.BankLabel),
 				SizeGB:    int(slot.Capacity / (1024 * 1024 * 1024)),
 				SpeedMHz:  slot.Speed,
@@ -169,22 +170,22 @@ func getRAM(runner CommandRunner) (RAMInfo, error) {
 
 // ── Storage ──────────────────────────────────────
 
-func getStorage(runner CommandRunner) ([]StorageInfo, error) {
+func getStorage(runner CommandRunner) ([]inventory.StorageInfo, error) {
 	var drives []struct {
-		Model        string `json:"Model"`
-		SerialNumber string `json:"SerialNumber"`
-		Size         string `json:"Size"`
+		Model         string `json:"Model"`
+		SerialNumber  string `json:"SerialNumber"`
+		Size          string `json:"Size"`
 		InterfaceType string `json:"InterfaceType"`
-		MediaType    string `json:"MediaType"`
+		MediaType     string `json:"MediaType"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_DiskDrive | Select-Object Model,SerialNumber,Size,InterfaceType,MediaType`, &drives); err != nil {
 		return nil, err
 	}
 
-	var result []StorageInfo
+	var result []inventory.StorageInfo
 	for _, d := range drives {
 		sizeGB := FromBytes(ParseInt64(d.Size)).GB()
-		result = append(result, StorageInfo{
+		result = append(result, inventory.StorageInfo{
 			Model:        strings.TrimSpace(decodeUint16([]uint16(runeArray(d.Model)))),
 			SerialNumber: strings.TrimSpace(d.SerialNumber),
 			SizeGB:       sizeGB,
@@ -197,8 +198,8 @@ func getStorage(runner CommandRunner) ([]StorageInfo, error) {
 
 // ── Motherboard ──────────────────────────────────
 
-func getMotherboard(runner CommandRunner) (MotherboardInfo, error) {
-	mb := MotherboardInfo{}
+func getMotherboard(runner CommandRunner) (inventory.MotherboardInfo, error) {
+	mb := inventory.MotherboardInfo{}
 
 	var boards []struct {
 		Manufacturer string `json:"Manufacturer"`
@@ -225,19 +226,19 @@ func getMotherboard(runner CommandRunner) (MotherboardInfo, error) {
 
 // ── GPU ──────────────────────────────────────────
 
-func getGPU(runner CommandRunner) ([]GPUInfo, error) {
+func getGPU(runner CommandRunner) ([]inventory.GPUInfo, error) {
 	var adapters []struct {
-		Name              string `json:"Name"`
-		AdapterRAM        int64  `json:"AdapterRAM"`
-		DriverVersion     string `json:"DriverVersion"`
+		Name          string `json:"Name"`
+		AdapterRAM    int64  `json:"AdapterRAM"`
+		DriverVersion string `json:"DriverVersion"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion`, &adapters); err != nil {
 		return nil, err
 	}
 
-	var result []GPUInfo
+	var result []inventory.GPUInfo
 	for _, a := range adapters {
-		gpu := GPUInfo{
+		gpu := inventory.GPUInfo{
 			Name:          strings.TrimSpace(a.Name),
 			DriverVersion: strings.TrimSpace(a.DriverVersion),
 		}
@@ -251,22 +252,22 @@ func getGPU(runner CommandRunner) ([]GPUInfo, error) {
 
 // ── Monitors ─────────────────────────────────────
 
-func getMonitors(runner CommandRunner) ([]MonitorInfo, error) {
+func getMonitors(runner CommandRunner) ([]inventory.MonitorInfo, error) {
 	var monitors []struct {
 		MonitorManufacturerID uint16 `json:"MonitorManufacturerID"`
-		Name                 string `json:"Name"`
-		MonitorID            string `json:"MonitorID"`
-		ScreenWidth          uint32 `json:"ScreenWidth"`
-		ScreenHeight         uint32 `json:"ScreenHeight"`
-		SerialNumberID       string `json:"SerialNumberID"`
+		Name                  string `json:"Name"`
+		MonitorID             string `json:"MonitorID"`
+		ScreenWidth           uint32 `json:"ScreenWidth"`
+		ScreenHeight          uint32 `json:"ScreenHeight"`
+		SerialNumberID        string `json:"SerialNumberID"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance WmiMonitorID -Namespace root\wmi | Select-Object MonitorManufacturerID,Name,MonitorID,ScreenWidth,ScreenHeight,SerialNumberID`, &monitors); err != nil {
 		return nil, err
 	}
 
-	var result []MonitorInfo
+	var result []inventory.MonitorInfo
 	for _, m := range monitors {
-		mi := MonitorInfo{
+		mi := inventory.MonitorInfo{
 			Manufacturer: decodeUint16([]uint16{m.MonitorManufacturerID}),
 			Model:        decodeUint16(m.Name[:]),
 			SerialNumber: decodeUint16([]uint16(runeArray(m.SerialNumberID))),
@@ -283,7 +284,7 @@ func getMonitors(runner CommandRunner) ([]MonitorInfo, error) {
 
 // ── Network ──────────────────────────────────────
 
-func getNetwork(runner CommandRunner) ([]NetworkInfo, error) {
+func getNetwork(runner CommandRunner) ([]inventory.NetworkInfo, error) {
 	var adapters []struct {
 		Name        string `json:"Name"`
 		MACAddress  string `json:"MACAddress"`
@@ -295,12 +296,12 @@ func getNetwork(runner CommandRunner) ([]NetworkInfo, error) {
 		return nil, err
 	}
 
-	var result []NetworkInfo
+	var result []inventory.NetworkInfo
 	for _, a := range adapters {
-		result = append(result, NetworkInfo{
-			Name:       strings.TrimSpace(a.Name),
-			MACAddress: strings.TrimSpace(a.MACAddress),
-			Speed:      a.Speed,
+		result = append(result, inventory.NetworkInfo{
+			Name:        strings.TrimSpace(a.Name),
+			MACAddress:  strings.TrimSpace(a.MACAddress),
+			Speed:       a.Speed,
 			DHCPEnabled: a.DhcpEnabled,
 		})
 	}
@@ -329,7 +330,7 @@ func getNetwork(runner CommandRunner) ([]NetworkInfo, error) {
 
 // ── Software ─────────────────────────────────────
 
-func getSoftware(runner CommandRunner) ([]SoftwareInfo, error) {
+func getSoftware(runner CommandRunner) ([]inventory.SoftwareInfo, error) {
 	script := `
 $paths = @(
 	"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
@@ -350,14 +351,14 @@ ConvertTo-Json -Compress
 		Publisher   string `json:"Publisher"`
 		InstallDate string `json:"InstallDate"`
 	}
-	var result []SoftwareInfo
+	var result []inventory.SoftwareInfo
 	if err := json.Unmarshal([]byte(out), &software); err == nil {
 		maxSW := 200
 		if len(software) > maxSW {
 			software = software[:maxSW]
 		}
 		for _, s := range software {
-			result = append(result, SoftwareInfo{
+			result = append(result, inventory.SoftwareInfo{
 				Name:        strings.TrimSpace(s.Name),
 				Version:     strings.TrimSpace(s.Version),
 				Publisher:   strings.TrimSpace(s.Publisher),
