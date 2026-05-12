@@ -1,7 +1,7 @@
-# ioDat — Colector de inventario para ioDesk-3
+# ioDat — Colector de inventario
 
 Herramienta **multiplataforma** para el levantamiento técnico de equipos informáticos.
-Genera un JSON listo para importar en ioDesk-3.
+Genera un JSON listo para importar en ioDesk.
 
 **Cero dependencias.** Binario autocontenido. No requiere instalación, red ni permisos de administrador.
 
