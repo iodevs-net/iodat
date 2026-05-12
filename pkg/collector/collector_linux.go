@@ -291,6 +291,15 @@ func getMonitors(fs FileSystem) []inventory.MonitorInfo {
 			continue
 		}
 
+		// Validar checksum EDID: suma de bytes 0-127 debe ser 0 mod 256
+		var sum int
+		for _, b := range edid[:128] {
+			sum += int(b)
+		}
+		if sum%256 != 0 {
+			continue
+		}
+
 		mi := inventory.MonitorInfo{}
 		// Manufacturer ID (bytes 8-9 en EDID)
 		if len(edid) > 10 {
