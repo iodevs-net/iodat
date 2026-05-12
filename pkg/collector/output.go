@@ -14,21 +14,23 @@ import (
 // GenerateOutput genera el archivo JSON con hash embebido.
 // outputDir: directorio destino (vacío = directorio actual).
 // Retorna la ruta del archivo generado y el hash SHA-256.
+//
+// El hash se calcula sobre el contenido JSON con collector_hash="".
+// Luego se reemplaza por el hash real en el archivo final.
+// Para verificar: reemplazar "collector_hash":"<valor>" por
+// "collector_hash":"" en el JSON y comparar el hash.
 func GenerateOutput(inv *Inventory, outputDir string) (string, string, error) {
-	// Embed hash (placeholder inicial)
-	inv.CollectorHash = "pending"
-
-	// Serializar a JSON
+	// Calcular hash sobre contenido con collector_hash vacío
+	inv.CollectorHash = ""
 	data, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return "", "", fmt.Errorf("error serializando: %w", err)
 	}
 
-	// Calcular hash del contenido
 	hash := sha256.Sum256(data)
 	hashStr := hex.EncodeToString(hash[:])
 
-	// Re-serializar con hash real
+	// Re-serializar con hash real para el archivo de salida
 	inv.CollectorHash = hashStr
 	data, err = json.MarshalIndent(inv, "", "  ")
 	if err != nil {
@@ -66,7 +68,10 @@ func GenerateOutput(inv *Inventory, outputDir string) (string, string, error) {
 }
 
 // PrintOutput escribe el JSON a stdout (útil para piping).
+// collector_hash aparece vacío en stdout ya que el hash solo es
+// significativo en el archivo generado por GenerateOutput.
 func PrintOutput(inv *Inventory) error {
+	inv.CollectorHash = ""
 	data, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error serializando: %w", err)
