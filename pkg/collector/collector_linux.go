@@ -89,8 +89,16 @@ func getSystemInfo(fs FileSystem, runner CommandRunner) inventory.SystemInfo {
 		si.SerialNumber = runWithTimeout(runner, CmdTimeoutFast, "dmidecode", "-s", "system-serial-number")
 	}
 	if si.SerialNumber == "" {
-		// Fallback 2: product_uuid como identificador único de hardware
+		// Fallback 2: pkexec dmidecode (PolicyKit, puede pedir contraseña)
+		si.SerialNumber = runWithTimeout(runner, CmdTimeoutSlow, "pkexec", "dmidecode", "-s", "system-serial-number")
+	}
+	if si.SerialNumber == "" {
+		// Fallback 3: product_uuid como identificador de hardware
 		si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_uuid")
+	}
+	if si.SerialNumber == "" {
+		// Fallback 4: machine-id como último recurso (persistente por instalación)
+		si.SerialNumber = readFile(fs, "/etc/machine-id")
 	}
 
 	// OS info
@@ -240,6 +248,9 @@ func getMotherboard(fs FileSystem) inventory.MotherboardInfo {
 	mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/board_serial")
 	if mb.SerialNumber == "" {
 		mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/chassis_serial")
+	}
+	if mb.SerialNumber == "" {
+		mb.SerialNumber = readFile(fs, "/etc/machine-id")
 	}
 	mb.BIOSVersion = readFile(fs, "/sys/class/dmi/id/bios_version")
 	mb.BIOSDate = readFile(fs, "/sys/class/dmi/id/bios_date")
