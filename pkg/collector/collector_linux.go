@@ -5,7 +5,6 @@ package collector
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,39 +23,49 @@ func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, ar
 	return strings.TrimSpace(string(out))
 }
 
+// readFile is a convenience helper that reads a file through the FileSystem
+// and returns trimmed content. Returns empty string on error.
+func readFile(fs FileSystem, path string) string {
+	data, err := fs.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // Run recolecta todo el inventario en Linux.
-func Run(runner CommandRunner) (*Inventory, error) {
+func Run(runner CommandRunner, fs FileSystem) (*Inventory, error) {
 	inv := &Inventory{
 		CollectorVersion: "1.0.0",
 	}
 	var errs PartialErrors
 
-	inv.Hostname = readFile("/proc/sys/kernel/hostname")
+	inv.Hostname = readFile(fs, "/proc/sys/kernel/hostname")
 	if inv.Hostname == "" {
 		errs.Add("hostname: no se pudo leer")
 	}
 
-	inv.System = getSystemInfo(runner)
+	inv.System = getSystemInfo(fs, runner)
 	if inv.System.OS == "" {
 		errs.Add("system: OS info incompleto")
 	}
 
-	inv.CPU = getCPU()
-	inv.RAM = getRAM()
-	inv.Storage = getStorage()
-	inv.Motherboard = getMotherboard()
+	inv.CPU = getCPU(fs)
+	inv.RAM = getRAM(fs)
+	inv.Storage = getStorage(fs)
+	inv.Motherboard = getMotherboard(fs)
 
-	inv.GPU = getGPU(runner)
+	inv.GPU = getGPU(runner, fs)
 	if len(inv.GPU) == 0 {
 		errs.Add("gpu: no se detectaron adaptadores gráficos")
 	}
 
-	inv.Monitors = getMonitors()
+	inv.Monitors = getMonitors(fs)
 	if len(inv.Monitors) == 0 {
 		errs.Add("monitors: no se detectaron monitores")
 	}
 
-	inv.Network = getNetwork(runner)
+	inv.Network = getNetwork(runner, fs)
 	if len(inv.Network) == 0 {
 		errs.Add("network: no se detectaron interfaces")
 	}
@@ -64,29 +73,22 @@ func Run(runner CommandRunner) (*Inventory, error) {
 	return inv, errs.Err()
 }
 
-func readFile(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func getSystemInfo(runner CommandRunner) SystemInfo {
+func getSystemInfo(fs FileSystem, runner CommandRunner) SystemInfo {
 	si := SystemInfo{}
-	si.Manufacturer = readFile("/sys/class/dmi/id/sys_vendor")
-	si.Model = readFile("/sys/class/dmi/id/product_name")
-	si.SerialNumber = readFile("/sys/class/dmi/id/product_serial")
+	si.Manufacturer = readFile(fs, "/sys/class/dmi/id/sys_vendor")
+	si.Model = readFile(fs, "/sys/class/dmi/id/product_name")
+	si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_serial")
 
 	// OS info
-	osRelease, _ := os.ReadFile("/etc/os-release")
-	for _, line := range strings.Split(string(osRelease), "\n") {
-		if strings.HasPrefix(line, "PRETTY_NAME=") {
-			si.OS = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+	if osRelease, err := fs.ReadFile("/etc/os-release"); err == nil {
+		for _, line := range strings.Split(string(osRelease), "\n") {
+			if strings.HasPrefix(line, "PRETTY_NAME=") {
+				si.OS = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+			}
 		}
 	}
 	if si.OS == "" {
-		si.OS = readFile("/etc/hostname") // fallback
+		si.OS = readFile(fs, "/etc/hostname") // fallback
 	}
 
 	// UName with timeout
@@ -96,9 +98,9 @@ func getSystemInfo(runner CommandRunner) SystemInfo {
 	return si
 }
 
-func getCPU() CPUInfo {
+func getCPU(fs FileSystem) CPUInfo {
 	cpu := CPUInfo{}
-	data, err := os.ReadFile("/proc/cpuinfo")
+	data, err := fs.ReadFile("/proc/cpuinfo")
 	if err != nil {
 		return cpu
 	}
@@ -143,9 +145,9 @@ func getCPU() CPUInfo {
 	return cpu
 }
 
-func getRAM() RAMInfo {
+func getRAM(fs FileSystem) RAMInfo {
 	ram := RAMInfo{}
-	data, err := os.ReadFile("/proc/meminfo")
+	data, err := fs.ReadFile("/proc/meminfo")
 	if err != nil {
 		return ram
 	}
@@ -165,37 +167,35 @@ func getRAM() RAMInfo {
 	return ram
 }
 
-func getStorage() []StorageInfo {
+func getStorage(fs FileSystem) []StorageInfo {
 	var result []StorageInfo
 
-	// Leer discos desde /sys/block
-	devices, err := os.ReadDir("/sys/block")
+	devices, err := fs.ReadDir("/sys/block")
 	if err != nil {
 		return result
 	}
 
-	for _, dev := range devices {
-		name := dev.Name()
+	for _, name := range devices {
 		// Saltar loop, ram, sr (CD-ROM)
 		if strings.HasPrefix(name, "loop") || strings.HasPrefix(name, "ram") || strings.HasPrefix(name, "sr") {
 			continue
 		}
 
 		s := StorageInfo{
-			Model: readFile(fmt.Sprintf("/sys/block/%s/device/model", name)),
-			SizeGB: FromBlocks(ParseInt64(readFile(fmt.Sprintf("/sys/block/%s/size", name)))).GB(),
+			Model: readFile(fs, fmt.Sprintf("/sys/block/%s/device/model", name)),
+			SizeGB: FromBlocks(ParseInt64(readFile(fs, fmt.Sprintf("/sys/block/%s/size", name)))).GB(),
 		}
 
 		// Serial
-		serial := readFile(fmt.Sprintf("/sys/block/%s/device/serial", name))
-		wwwn := readFile(fmt.Sprintf("/sys/block/%s/device/wwwn", name))
+		serial := readFile(fs, fmt.Sprintf("/sys/block/%s/device/serial", name))
+		wwwn := readFile(fs, fmt.Sprintf("/sys/block/%s/device/wwwn", name))
 		s.SerialNumber = serial
 		if s.SerialNumber == "" {
 			s.SerialNumber = wwwn
 		}
 
 		// Tipo (SSD/HDD)
-		rotational := readFile(fmt.Sprintf("/sys/block/%s/queue/rotational", name))
+		rotational := readFile(fs, fmt.Sprintf("/sys/block/%s/queue/rotational", name))
 		if rotational == "0" {
 			s.Type = "SSD"
 		} else {
@@ -219,17 +219,17 @@ func getStorage() []StorageInfo {
 	return result
 }
 
-func getMotherboard() MotherboardInfo {
+func getMotherboard(fs FileSystem) MotherboardInfo {
 	mb := MotherboardInfo{}
-	mb.Manufacturer = readFile("/sys/class/dmi/id/board_vendor")
-	mb.Product = readFile("/sys/class/dmi/id/board_name")
-	mb.SerialNumber = readFile("/sys/class/dmi/id/board_serial")
-	mb.BIOSVersion = readFile("/sys/class/dmi/id/bios_version")
-	mb.BIOSDate = readFile("/sys/class/dmi/id/bios_date")
+	mb.Manufacturer = readFile(fs, "/sys/class/dmi/id/board_vendor")
+	mb.Product = readFile(fs, "/sys/class/dmi/id/board_name")
+	mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/board_serial")
+	mb.BIOSVersion = readFile(fs, "/sys/class/dmi/id/bios_version")
+	mb.BIOSDate = readFile(fs, "/sys/class/dmi/id/bios_date")
 	return mb
 }
 
-func getGPU(runner CommandRunner) []GPUInfo {
+func getGPU(runner CommandRunner, fs FileSystem) []GPUInfo {
 	var result []GPUInfo
 
 	// Método 1: lspci (estándar en la mayoría de distros)
@@ -251,18 +251,14 @@ func getGPU(runner CommandRunner) []GPUInfo {
 	}
 
 	// Método 2: /sys/class/drm (no requiere lspci)
-	devices, err := os.ReadDir("/sys/class/drm")
+	devices, err := fs.ReadDir("/sys/class/drm")
 	if err == nil {
-		for _, dev := range devices {
-			name := dev.Name()
+		for _, name := range devices {
 			if !strings.HasPrefix(name, "card") || strings.Contains(name, "-") {
 				continue
 			}
-			// Leer vendor del dispositivo
-			vendorPath := fmt.Sprintf("/sys/class/drm/%s/device/vendor", name)
-			devicePath := fmt.Sprintf("/sys/class/drm/%s/device/device", name)
-			vendor := readFile(vendorPath)
-			devID := readFile(devicePath)
+			vendor := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/vendor", name))
+			devID := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/device", name))
 			if vendor != "" || devID != "" {
 				result = append(result, GPUInfo{
 					Name: fmt.Sprintf("GPU %s:%s", strings.TrimPrefix(vendor, "0x"), strings.TrimPrefix(devID, "0x")),
@@ -274,21 +270,19 @@ func getGPU(runner CommandRunner) []GPUInfo {
 	return result
 }
 
-func getMonitors() []MonitorInfo {
-	// EDID parsing from /sys/class/drm/
+func getMonitors(fs FileSystem) []MonitorInfo {
 	var result []MonitorInfo
-	devices, err := os.ReadDir("/sys/class/drm/")
+	devices, err := fs.ReadDir("/sys/class/drm/")
 	if err != nil {
 		return result
 	}
 
-	for _, dev := range devices {
-		name := dev.Name()
+	for _, name := range devices {
 		if !strings.Contains(name, "-") {
 			continue
 		}
 		edidPath := fmt.Sprintf("/sys/class/drm/%s/edid", name)
-		edid, err := os.ReadFile(edidPath)
+		edid, err := fs.ReadFile(edidPath)
 		if err != nil {
 			continue
 		}
@@ -319,33 +313,30 @@ func getMonitors() []MonitorInfo {
 	return result
 }
 
-func getNetwork(runner CommandRunner) []NetworkInfo {
+func getNetwork(runner CommandRunner, fs FileSystem) []NetworkInfo {
 	var result []NetworkInfo
 
-	// /sys/class/net
-	interfaces, err := os.ReadDir("/sys/class/net")
+	interfaces, err := fs.ReadDir("/sys/class/net")
 	if err != nil {
 		return result
 	}
 
-	for _, iface := range interfaces {
-		name := iface.Name()
+	for _, name := range interfaces {
 		if name == "lo" {
 			continue
 		}
 
 		n := NetworkInfo{
 			Name:       name,
-			MACAddress: readFile(fmt.Sprintf("/sys/class/net/%s/address", name)),
+			MACAddress: readFile(fs, fmt.Sprintf("/sys/class/net/%s/address", name)),
 		}
 
 		// Speed
-		speedStr := readFile(fmt.Sprintf("/sys/class/net/%s/speed", name))
+		speedStr := readFile(fs, fmt.Sprintf("/sys/class/net/%s/speed", name))
 		n.Speed = ParseInt64(speedStr)
 
 		// IP via ip addr (with timeout)
-		if out := runWithTimeout(runner, CmdTimeoutMedium, "ip", "-json", "addr", "show", name); out != "" {
-			// Simple parsing: buscar inet
+		if out := runWithTimeout(runner, CmdTimeoutMedium, "ip", "addr", "show", name); out != "" {
 			re := regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)`)
 			matches := re.FindStringSubmatch(out)
 			if len(matches) > 1 {
@@ -358,5 +349,3 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 
 	return result
 }
-
-

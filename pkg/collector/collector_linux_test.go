@@ -8,11 +8,10 @@ import (
 	"testing"
 )
 
-func readFixture(name string) string {
-	data, err := os.ReadFile(filepath.Join("testdata", "linux", name))
+func readFixture(so, name string) string {
+	data, err := os.ReadFile(filepath.Join("testdata", so, name))
 	if err != nil {
-		// Fallback: try from package dir (go test runs from package)
-		data, err = os.ReadFile(filepath.Join("pkg/collector/testdata", "linux", name))
+		data, err = os.ReadFile(filepath.Join("pkg/collector/testdata", so, name))
 		if err != nil {
 			return ""
 		}
@@ -20,118 +19,205 @@ func readFixture(name string) string {
 	return string(data)
 }
 
-func TestGetGPU(t *testing.T) {
-	fake := &FakeCommandRunner{
-		Responses: map[string]string{
-			"lspci -mm": readFixture("lspci_mm.txt"),
+// fakeLinuxFiles returns a FakeFileSystem pre-loaded with realistic
+// Linux /proc and /sys fixture data.
+func fakeLinuxFiles() *FakeFileSystem {
+	fs := &FakeFileSystem{
+		Files: map[string]string{
+			"/proc/sys/kernel/hostname":            "test-host",
+			"/sys/class/dmi/id/sys_vendor":         "HP\n",
+			"/sys/class/dmi/id/product_name":       "ProDesk 600 G5\n",
+			"/sys/class/dmi/id/product_serial":     "ABC123\n",
+			"/etc/os-release":                      "PRETTY_NAME=\"Ubuntu 22.04 LTS\"\nVERSION_ID=\"22.04\"\n",
+			"/proc/cpuinfo":                        fixtureCPUInfo(),
+			"/proc/meminfo":                        "MemTotal:       16266708 kB\nMemFree:         8234567 kB\n",
+			"/sys/class/dmi/id/board_vendor":       "HP\n",
+			"/sys/class/dmi/id/board_name":         "8653A\n",
+			"/sys/class/dmi/id/board_serial":       "ABC123BOARD\n",
+			"/sys/class/dmi/id/bios_version":       "U42 v2.15\n",
+			"/sys/class/dmi/id/bios_date":          "04/15/2023\n",
+			"/sys/block/sda/device/model":          "ST500DM002-1BD142\n",
+			"/sys/block/sda/size":                  "976773168\n",
+			"/sys/block/sda/device/serial":         "Z1ABCDEF\n",
+			"/sys/block/sda/queue/rotational":      "1\n",
+			"/sys/class/net/eno1/address":          "04:0e:3c:31:6e:07\n",
+			"/sys/class/net/eno1/speed":            "1000\n",
+		},
+		Dirs: map[string][]string{
+			"/sys/block":            {"sda", "sr0"},
+			"/sys/class/drm":        {},
+			"/sys/class/net":        {"lo", "eno1"},
+			"/sys/class/drm/":       {},
+			"/sys/class/dmi/id":     {},
 		},
 	}
+	return fs
+}
 
-	gpus := getGPU(fake)
+func fixtureCPUInfo() string {
+	return `processor	: 0
+model name	: Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz
+cpu MHz		: 800.000
+physical id	: 0
 
-	if len(gpus) != 2 {
-		t.Fatalf("getGPU() returned %d GPUs, want 2 (Intel + NVIDIA)", len(gpus))
+processor	: 1
+physical id	: 0
+
+processor	: 2
+physical id	: 0
+
+processor	: 3
+physical id	: 0
+
+processor	: 4
+physical id	: 0
+
+processor	: 5
+model name	: Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz
+cpu MHz		: 3700.000
+physical id	: 0
+`
+}
+
+func TestGetCPU_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
+	cpu := getCPU(fs)
+
+	if cpu.Name != "Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz" {
+		t.Errorf("Name = %q, want %q", cpu.Name, "Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz")
 	}
-
-	// The current parser extracts vendor name (parts[3] from lspci -mm)
-	// "Intel Corporation" from "VGA compatible controller" "Intel Corp..."
-	if gpus[0].Name != "Intel Corporation" {
-		t.Errorf("GPU[0].Name = %q, want %q",
-			gpus[0].Name, "Intel Corporation")
+	if cpu.NameClean != "Intel Core i5-8500" {
+		t.Errorf("NameClean = %q, want %q", cpu.NameClean, "Intel Core i5-8500")
 	}
-
-	// "NVIDIA Corporation" from "VGA compatible controller" "NVIDIA Corp..."
-	if gpus[1].Name != "NVIDIA Corporation" {
-		t.Errorf("GPU[1].Name = %q, want %q",
-			gpus[1].Name, "NVIDIA Corporation")
+	if cpu.Cores != 1 {
+		t.Errorf("Cores = %d, want 1 (single physical id)", cpu.Cores)
 	}
-
-	// Verify the exact commands that were issued
-	if len(fake.Calls) != 1 {
-		t.Fatalf("expected 1 command call, got %d", len(fake.Calls))
+	if cpu.LogicalProcessors != 6 {
+		t.Errorf("LogicalProcessors = %d, want 6", cpu.LogicalProcessors)
 	}
-	if fake.Calls[0] != "lspci -mm" {
-		t.Errorf("unexpected command: %q", fake.Calls[0])
+	if cpu.MaxClockMHz != 3700 {
+		t.Errorf("MaxClockMHz = %d, want %d", cpu.MaxClockMHz, 3700)
 	}
 }
 
-func TestGetGPU_NoLspci(t *testing.T) {
-	// When lspci returns empty, getGPU falls back to /sys/class/drm.
-	// On machines with a real GPU, /sys/class/drm may find something;
-	// in a container/CI it might not. We just verify it doesn't crash.
+func TestGetRAM_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
+	ram := getRAM(fs)
+
+	if ram.TotalGB != 15 {
+		t.Errorf("TotalGB = %d, want %d", ram.TotalGB, 15)
+	}
+	if ram.Formatted != "15GB" {
+		t.Errorf("Formatted = %q, want %q", ram.Formatted, "15GB")
+	}
+}
+
+func TestGetStorage_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
+	storage := getStorage(fs)
+
+	if len(storage) != 1 {
+		t.Fatalf("len(Storage) = %d, want 1 (sda only, sr0 skipped)", len(storage))
+	}
+	if storage[0].Model != "ST500DM002-1BD142" {
+		t.Errorf("Model = %q, want %q", storage[0].Model, "ST500DM002-1BD142")
+	}
+	if storage[0].SizeGB != 500 {
+		t.Errorf("SizeGB = %d, want %d", storage[0].SizeGB, 500)
+	}
+	if storage[0].Type != "HDD" {
+		t.Errorf("Type = %q, want %q", storage[0].Type, "HDD")
+	}
+}
+
+func TestGetMotherboard_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
+	mb := getMotherboard(fs)
+
+	if mb.Manufacturer != "HP" {
+		t.Errorf("Manufacturer = %q, want %q", mb.Manufacturer, "HP")
+	}
+	if mb.Product != "8653A" {
+		t.Errorf("Product = %q, want %q", mb.Product, "8653A")
+	}
+	if mb.SerialNumber != "ABC123BOARD" {
+		t.Errorf("SerialNumber = %q, want %q", mb.SerialNumber, "ABC123BOARD")
+	}
+	if mb.BIOSVersion != "U42 v2.15" {
+		t.Errorf("BIOSVersion = %q, want %q", mb.BIOSVersion, "U42 v2.15")
+	}
+}
+
+func TestGetSystemInfo_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
 	fake := &FakeCommandRunner{
 		Responses: map[string]string{
-			"lspci -mm": "",
-		},
-	}
-
-	gpus := getGPU(fake)
-	_ = gpus // no crash = pass
-}
-
-func TestGetGPU_LspciError(t *testing.T) {
-	// When lspci fails, it should fallback to /sys/class/drm
-	// (which will be empty in CI, so 0 GPUs expected)
-	fake := &FakeCommandRunner{
-		Responses: map[string]string{}, // no response → error
-	}
-
-	gpus := getGPU(fake)
-	// On a real machine /sys/class/drm may have cards,
-	// but we only verify it doesn't crash
-	_ = gpus
-}
-
-func TestGetNetwork_Partial(t *testing.T) {
-	// Test that getNetwork uses the runner for IP address.
-	// MAC and speed come from real /sys/class/net files.
-	fake := &FakeCommandRunner{
-		Responses: map[string]string{
-			"ip -json addr show lo": "[]",
-		},
-	}
-
-	networks := getNetwork(fake)
-
-	// At minimum we should have interfaces (real hardware)
-	if len(networks) == 0 {
-		t.Fatal("getNetwork() returned 0 interfaces")
-	}
-
-	// Verify all recorded commands include "ip -json addr show"
-	for _, call := range fake.Calls {
-		if len(call) < 22 || call[:22] != "ip -json addr show " {
-			continue
-		}
-		iface := call[22:]
-		_ = iface
-	}
-}
-
-func TestRunReturnsInventory(t *testing.T) {
-	// Full Run() with fake runner (uname only)
-	// File-read data comes from the real machine.
-	fake := &FakeCommandRunner{
-		Responses: map[string]string{
-			"uname -r": "6.8.0-test",
+			"uname -r": "6.8.0-45-generic",
 			"uname -m": "x86_64",
 		},
 	}
 
-	inv, err := Run(fake)
+	si := getSystemInfo(fs, fake)
+
+	if si.Manufacturer != "HP" {
+		t.Errorf("Manufacturer = %q, want %q", si.Manufacturer, "HP")
+	}
+	if si.Model != "ProDesk 600 G5" {
+		t.Errorf("Model = %q, want %q", si.Model, "ProDesk 600 G5")
+	}
+	if si.OS != "Ubuntu 22.04 LTS" {
+		t.Errorf("OS = %q, want %q", si.OS, "Ubuntu 22.04 LTS")
+	}
+	if si.OSVersion != "6.8.0-45-generic" {
+		t.Errorf("OSVersion = %q, want %q", si.OSVersion, "6.8.0-45-generic")
+	}
+	if si.OSArchitecture != "x86_64" {
+		t.Errorf("OSArchitecture = %q, want %q", si.OSArchitecture, "x86_64")
+	}
+}
+
+func TestRun_WithFakeFS(t *testing.T) {
+	fs := fakeLinuxFiles()
+	fake := &FakeCommandRunner{
+		Responses: map[string]string{
+			"uname -r":       "6.8.0-45-generic",
+			"uname -m":       "x86_64",
+			"lspci -mm":          readFixture("linux", "lspci_mm.txt"),
+			"ip addr show lo":    "1: lo: ... inet 127.0.0.1/8 ...",
+			"ip addr show eno1":  "2: eno1: ... inet 192.168.1.100/24 brd 192.168.1.255 scope global eno1",
+		},
+	}
+
+	inv, err := Run(fake, fs)
 	if err != nil {
-		t.Logf("Run() returned partial error: %v", err)
+		t.Logf("Run() partial errors: %v", err)
 	}
 	if inv == nil {
 		t.Fatal("Run() returned nil inventory")
 	}
-	if inv.CollectorVersion != "1.0.0" {
-		t.Errorf("CollectorVersion = %q, want %q", inv.CollectorVersion, "1.0.0")
+
+	if inv.Hostname != "test-host" {
+		t.Errorf("Hostname = %q, want %q", inv.Hostname, "test-host")
 	}
-	if inv.Hostname == "" {
-		t.Error("Hostname is empty")
+	if inv.System.Manufacturer != "HP" {
+		t.Errorf("Manufacturer = %q, want %q", inv.System.Manufacturer, "HP")
 	}
-	if inv.System.OS == "" {
-		t.Error("OS is empty")
+	if inv.CPU.Name != "Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz" {
+		t.Errorf("CPU.Name = %q, want %q", inv.CPU.Name, "Intel(R) Core(TM) i5-8500 CPU @ 3.00GHz")
+	}
+	if inv.RAM.TotalGB != 15 {
+		t.Errorf("RAM.TotalGB = %d, want %d", inv.RAM.TotalGB, 15)
+	}
+	if len(inv.Storage) != 1 {
+		t.Errorf("len(Storage) = %d, want 1", len(inv.Storage))
+	}
+	if len(inv.Network) != 1 {
+		t.Errorf("len(Network) = %d, want 1 (eno1 only, lo skipped)", len(inv.Network))
+	}
+	if inv.Network[0].MACAddress != "04:0e:3c:31:6e:07" {
+		t.Errorf("Network[0].MAC = %q, want %q", inv.Network[0].MACAddress, "04:0e:3c:31:6e:07")
+	}
+	if inv.Network[0].IPAddress != "192.168.1.100" {
+		t.Errorf("Network[0].IP = %q, want %q", inv.Network[0].IPAddress, "192.168.1.100")
 	}
 }

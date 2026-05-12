@@ -4,6 +4,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -37,6 +38,37 @@ func (OSCommandRunner) Run(ctx context.Context, name string, args ...string) ([]
 // (hostname, uname, sysctl reads). Use CmdTimeoutMedium for moderately
 // expensive commands (lspci, ip, ifconfig). Use CmdTimeoutSlow for long-
 // running commands that can hang (system_profiler, PowerShell/WMI queries).
+// FileSystem defines the interface for reading files and directories.
+//
+// Production: OSFileSystem uses os.ReadFile/os.ReadDir for real access.
+// Testing: FakeFileSystem returns pre-loaded content from test fixtures.
+//
+// This enables dependency injection for Linux collectors that read
+// /proc, /sys, and other virtual filesystems.
+type FileSystem interface {
+	ReadFile(path string) ([]byte, error)
+	ReadDir(path string) ([]string, error)
+}
+
+// OSFileSystem is the production implementation.
+type OSFileSystem struct{}
+
+func (OSFileSystem) ReadFile(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
+
+func (OSFileSystem) ReadDir(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	return names, nil
+}
+
 const (
 	CmdTimeoutFast   = 5 * time.Second
 	CmdTimeoutMedium = 15 * time.Second

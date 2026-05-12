@@ -32,3 +32,54 @@ func (f *FakeCommandRunner) Reset() {
 	f.Calls = nil
 	f.Responses = nil
 }
+
+// FakeFileSystem returns pre-loaded content for files and directories.
+// Used in tests to avoid reading real /proc and /sys files.
+type FakeFileSystem struct {
+	Files  map[string]string // path → file content
+	Dirs   map[string][]string // path → directory entries
+	Called []string            // record of accessed paths
+}
+
+// ReadFile returns the canned content for the given path, or an error.
+func (f *FakeFileSystem) ReadFile(path string) ([]byte, error) {
+	f.Called = append(f.Called, path)
+	data, ok := f.Files[path]
+	if !ok {
+		return nil, fmt.Errorf("FakeFileSystem: file not found: %s", path)
+	}
+	return []byte(data), nil
+}
+
+// ReadDir returns the canned directory entries for the given path.
+func (f *FakeFileSystem) ReadDir(path string) ([]string, error) {
+	f.Called = append(f.Called, path)
+	entries, ok := f.Dirs[path]
+	if !ok {
+		return nil, fmt.Errorf("FakeFileSystem: dir not found: %s", path)
+	}
+	return entries, nil
+}
+
+// Reset clears all recorded calls, files, and dirs.
+func (f *FakeFileSystem) Reset() {
+	f.Called = nil
+	f.Files = nil
+	f.Dirs = nil
+}
+
+// AddFile is a convenience method to register a file.
+func (f *FakeFileSystem) AddFile(path, content string) {
+	if f.Files == nil {
+		f.Files = make(map[string]string)
+	}
+	f.Files[path] = content
+}
+
+// AddDir is a convenience method to register a directory.
+func (f *FakeFileSystem) AddDir(path string, entries []string) {
+	if f.Dirs == nil {
+		f.Dirs = make(map[string][]string)
+	}
+	f.Dirs[path] = entries
+}
