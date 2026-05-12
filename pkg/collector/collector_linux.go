@@ -50,6 +50,9 @@ func Run(runner CommandRunner, fs FileSystem) (*inventory.Inventory, error) {
 	if inv.System.OS == "" {
 		errs.Add("system: OS info incompleto")
 	}
+	if inv.System.SerialNumber == "" {
+		errs.Add("serial: no se pudo obtener (requiere root en algunas distros)")
+	}
 
 	inv.CPU = getCPU(fs)
 	inv.RAM = getRAM(fs)
@@ -78,7 +81,17 @@ func getSystemInfo(fs FileSystem, runner CommandRunner) inventory.SystemInfo {
 	si := inventory.SystemInfo{}
 	si.Manufacturer = readFile(fs, "/sys/class/dmi/id/sys_vendor")
 	si.Model = readFile(fs, "/sys/class/dmi/id/product_name")
+
+	// Serial number: múltiples métodos de obtención
 	si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_serial")
+	if si.SerialNumber == "" {
+		// Fallback 1: dmidecode (puede requerir sudo en algunas distros)
+		si.SerialNumber = runWithTimeout(runner, CmdTimeoutFast, "dmidecode", "-s", "system-serial-number")
+	}
+	if si.SerialNumber == "" {
+		// Fallback 2: product_uuid como identificador único de hardware
+		si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_uuid")
+	}
 
 	// OS info
 	if osRelease, err := fs.ReadFile("/etc/os-release"); err == nil {
@@ -225,6 +238,9 @@ func getMotherboard(fs FileSystem) inventory.MotherboardInfo {
 	mb.Manufacturer = readFile(fs, "/sys/class/dmi/id/board_vendor")
 	mb.Product = readFile(fs, "/sys/class/dmi/id/board_name")
 	mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/board_serial")
+	if mb.SerialNumber == "" {
+		mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/chassis_serial")
+	}
 	mb.BIOSVersion = readFile(fs, "/sys/class/dmi/id/bios_version")
 	mb.BIOSDate = readFile(fs, "/sys/class/dmi/id/bios_date")
 	return mb
