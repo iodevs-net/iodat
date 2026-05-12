@@ -17,10 +17,10 @@ func Run(runner CommandRunner) (*Inventory, error) {
 		CollectorVersion: "1.0.0",
 	}
 
-	var errs []string
+	var errs PartialErrors
 	collect := func(label string, fn func() error) {
 		if err := fn(); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", label, err))
+			errs.Add("%s: %v", label, err)
 		}
 	}
 
@@ -35,10 +35,7 @@ func Run(runner CommandRunner) (*Inventory, error) {
 	collect("Network", func() error { var err error; inv.Network, err = getNetwork(runner); return err })
 	collect("Software", func() error { var err error; inv.Software, err = getSoftware(runner); return err })
 
-	if len(errs) > 0 {
-		return inv, fmt.Errorf("errores parciales (%d): %s", len(errs), strings.Join(errs, "; "))
-	}
-	return inv, nil
+	return inv, errs.Err()
 }
 
 // ── Helpers de ejecución ─────────────────────────

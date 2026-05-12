@@ -30,18 +30,50 @@ func Run(runner CommandRunner) (*Inventory, error) {
 	inv := &Inventory{
 		CollectorVersion: "1.0.0",
 	}
+	var errs PartialErrors
 
 	inv.Hostname = runWithTimeout(runner, CmdTimeoutFast, "hostname")
+	if inv.Hostname == "" {
+		errs.Add("hostname: no se pudo obtener")
+	}
+
 	inv.System = getSystemInfo(runner)
+	if inv.System.Model == "" {
+		errs.Add("system: info de hardware incompleta")
+	}
+
 	inv.CPU = getCPU(runner)
+	if inv.CPU.Name == "" {
+		errs.Add("cpu: no se pudo detectar")
+	}
+
 	inv.RAM = getRAM(runner)
+	if inv.RAM.TotalGB == 0 {
+		errs.Add("ram: no se pudo detectar memoria")
+	}
+
 	inv.Storage = getStorage(runner)
+	if len(inv.Storage) == 0 {
+		errs.Add("storage: no se detectaron discos")
+	}
+
 	inv.Motherboard = getMotherboard(runner)
 	inv.GPU = getGPU(runner)
-	inv.Monitors = getMonitors(runner)
-	inv.Network = getNetwork(runner)
+	if len(inv.GPU) == 0 {
+		errs.Add("gpu: no se detectaron adaptadores gráficos")
+	}
 
-	return inv, nil
+	inv.Monitors = getMonitors(runner)
+	if len(inv.Monitors) == 0 {
+		errs.Add("monitors: no se detectaron monitores")
+	}
+
+	inv.Network = getNetwork(runner)
+	if len(inv.Network) == 0 {
+		errs.Add("network: no se detectaron interfaces")
+	}
+
+	return inv, errs.Err()
 }
 
 func getSystemInfo(runner CommandRunner) SystemInfo {

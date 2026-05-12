@@ -29,18 +29,39 @@ func Run(runner CommandRunner) (*Inventory, error) {
 	inv := &Inventory{
 		CollectorVersion: "1.0.0",
 	}
+	var errs PartialErrors
 
 	inv.Hostname = readFile("/proc/sys/kernel/hostname")
+	if inv.Hostname == "" {
+		errs.Add("hostname: no se pudo leer")
+	}
+
 	inv.System = getSystemInfo(runner)
+	if inv.System.OS == "" {
+		errs.Add("system: OS info incompleto")
+	}
+
 	inv.CPU = getCPU()
 	inv.RAM = getRAM()
 	inv.Storage = getStorage()
 	inv.Motherboard = getMotherboard()
-	inv.GPU = getGPU(runner)
-	inv.Monitors = getMonitors()
-	inv.Network = getNetwork(runner)
 
-	return inv, nil
+	inv.GPU = getGPU(runner)
+	if len(inv.GPU) == 0 {
+		errs.Add("gpu: no se detectaron adaptadores gráficos")
+	}
+
+	inv.Monitors = getMonitors()
+	if len(inv.Monitors) == 0 {
+		errs.Add("monitors: no se detectaron monitores")
+	}
+
+	inv.Network = getNetwork(runner)
+	if len(inv.Network) == 0 {
+		errs.Add("network: no se detectaron interfaces")
+	}
+
+	return inv, errs.Err()
 }
 
 func readFile(path string) string {

@@ -3,7 +3,9 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -40,3 +42,21 @@ const (
 	CmdTimeoutMedium = 15 * time.Second
 	CmdTimeoutSlow   = 30 * time.Second
 )
+
+// PartialErrors collects non-fatal errors during inventory collection.
+// Used across all platforms (Linux, macOS, Windows) for consistent
+// partial error reporting.
+type PartialErrors []string
+
+// Add appends a formatted error message.
+func (pe *PartialErrors) Add(format string, args ...interface{}) {
+	*pe = append(*pe, fmt.Sprintf(format, args...))
+}
+
+// Err returns a combined error if any were collected, nil otherwise.
+func (pe PartialErrors) Err() error {
+	if len(pe) == 0 {
+		return nil
+	}
+	return fmt.Errorf("errores parciales (%d): %s", len(pe), strings.Join(pe, "; "))
+}
