@@ -83,8 +83,6 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "ioDat: ¡Listo! Archivo generado:\n")
-		fmt.Fprintf(os.Stderr, "  %s\n", path)
-		fmt.Fprintf(os.Stderr, "  SHA-256: %s\n", hash)
+		showCompletion(path, dir, hash)
 	}
 }

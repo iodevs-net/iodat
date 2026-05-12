@@ -1,0 +1,227 @@
+{
+  "collector_version": "1.0.0",
+  "collector_hash": "ff07668cd8333965aa3e4d83cc95d00656e60e13ea10f7b3b7c5658553e3e2c1",
+  "hostname": "ssd-portable",
+  "system": {
+    "manufacturer": "HP",
+    "model": "HP ProOne 600 G5 21.5-in All-in-One",
+    "serial_number": "",
+    "os": "Linux Mint 22.1",
+    "os_version": "6.8.0-111-generic",
+    "os_architecture": "x86_64"
+  },
+  "cpu": {
+    "name": "Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz",
+    "name_clean": "Intel Core i7-9700",
+    "cores": 1,
+    "logical_processors": 8,
+    "max_clock_mhz": 4212
+  },
+  "ram": {
+    "total_gb": 15,
+    "formatted": "15GB",
+    "slots": null
+  },
+  "storage": [
+    {
+      "model": "KINGSTON SA400S3",
+      "serial_number": "",
+      "size_gb": 480,
+      "interface": "SATA",
+      "type": "SSD"
+    },
+    {
+      "model": "SC750",
+      "serial_number": "",
+      "size_gb": 1000,
+      "interface": "SATA",
+      "type": "HDD"
+    },
+    {
+      "model": "",
+      "serial_number": "",
+      "size_gb": 8,
+      "interface": "",
+      "type": "SSD"
+    }
+  ],
+  "motherboard": {
+    "manufacturer": "HP",
+    "product": "85A2",
+    "serial_number": "",
+    "bios_version": "R12 Ver. 02.20.00",
+    "bios_date": "12/13/2023"
+  },
+  "gpu": [
+    {
+      "name": "Intel Corporation",
+      "memory_gb": 0,
+      "driver_version": ""
+    }
+  ],
+  "monitors": null,
+  "network": [
+    {
+      "name": "br-0a87d3789760",
+      "mac_address": "a2:3c:29:21:c5:79",
+      "ip_address": "172.24.0.1",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "br-17c88b5273f8",
+      "mac_address": "8e:df:7b:18:a7:5c",
+      "ip_address": "172.19.0.1",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "br-7e7862f2bb31",
+      "mac_address": "8a:2a:50:ad:33:a6",
+      "ip_address": "172.22.0.1",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "br-f09b9cea78a8",
+      "mac_address": "16:10:1f:fb:45:66",
+      "ip_address": "172.18.0.1",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "docker0",
+      "mac_address": "ee:df:3e:b3:44:70",
+      "ip_address": "172.17.0.1",
+      "dhcp_enabled": false,
+      "speed": -1
+    },
+    {
+      "name": "eno1",
+      "mac_address": "04:0e:3c:31:6e:07",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": -1
+    },
+    {
+      "name": "tailscale0",
+      "mac_address": "",
+      "ip_address": "100.73.146.4",
+      "dhcp_enabled": false,
+      "speed": -1
+    },
+    {
+      "name": "veth042b2fd",
+      "mac_address": "d6:e7:a9:d0:19:10",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth305f278",
+      "mac_address": "9a:93:a3:93:80:7d",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth3d3d0c8",
+      "mac_address": "1e:8d:ae:e6:a3:62",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth53435cb",
+      "mac_address": "f6:ac:f4:4e:f7:f0",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth63833e3",
+      "mac_address": "42:1b:1c:29:49:2b",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth813c091",
+      "mac_address": "6a:68:03:86:cf:9a",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth8fd0179",
+      "mac_address": "56:16:66:87:79:8f",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth921e661",
+      "mac_address": "ce:f8:ed:32:60:6b",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "veth9be600e",
+      "mac_address": "16:dd:ad:78:9e:1f",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vetha45c729",
+      "mac_address": "9a:02:7c:f2:fb:6d",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vethb53e3cf",
+      "mac_address": "26:26:9e:d3:04:2b",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vethb805f15",
+      "mac_address": "3a:21:a8:cb:7d:ad",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vethde47a99",
+      "mac_address": "7e:5a:be:75:06:a3",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vethe796ec3",
+      "mac_address": "b2:d3:d4:a5:00:43",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "vethf0b908c",
+      "mac_address": "96:f6:c2:64:76:54",
+      "ip_address": "",
+      "dhcp_enabled": false,
+      "speed": 10000
+    },
+    {
+      "name": "wlp0s20f3",
+      "mac_address": "cc:f9:e4:7f:3d:39",
+      "ip_address": "192.168.1.85",
+      "dhcp_enabled": false,
+      "speed": 0
+    }
+  ],
+  "installed_software": null
+}
