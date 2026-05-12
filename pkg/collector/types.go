@@ -101,3 +101,19 @@ type SoftwareInfo struct {
 	Publisher   string `json:"publisher"`
 	InstallDate string `json:"install_date"`
 }
+
+// ByteSize representa un tamaño en bytes, usando base 1000 (SI)
+// para consistencia con fabricantes de hardware y el comportamiento
+// existente del colector.
+type ByteSize int64
+
+const (
+	B  ByteSize = 1
+	KB ByteSize = 1000
+	MB ByteSize = KB * 1000
+	GB ByteSize = MB * 1000
+	TB ByteSize = GB * 1000
+)
+
+// GB devuelve el tamaño en gigabytes enteros (base 1000).
+func (b ByteSize) GB() int { return int(b / GB) }

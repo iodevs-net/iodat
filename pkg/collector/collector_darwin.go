@@ -121,7 +121,7 @@ func getRAM(runner CommandRunner) RAMInfo {
 	}
 	if err := json.Unmarshal([]byte(sp), &mem); err == nil && len(mem.SPMemoryDataType) > 0 {
 		for _, slot := range mem.SPMemoryDataType[0].Items {
-			sizeGB := parseSizeToGB(strings.TrimSpace(slot.Size))
+			sizeGB := MustGB(strings.TrimSpace(slot.Size))
 			speed, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(slot.Speed), " MHz"))
 			ram.Slots = append(ram.Slots, RAMSlot{
 				BankLabel: strings.TrimSpace(slot.Name),
@@ -151,7 +151,7 @@ func getStorage(runner CommandRunner) []StorageInfo {
 	}
 	if err := json.Unmarshal([]byte(sp), &storage); err == nil {
 		for _, s := range storage.SPStorageDataType {
-			sizeGB := parseSizeToGB(s.Size)
+			sizeGB := MustGB(s.Size)
 			model := strings.TrimSpace(s.ItemName)
 			if model == "" {
 				model = strings.TrimSpace(s.PhysicalDrive)
@@ -305,25 +305,4 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 	return result
 }
 
-func parseSizeToGB(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	re := regexp.MustCompile(`([\d.]+)\s*(TB|GB|KB|MB)`)
-	m := re.FindStringSubmatch(s)
-	if len(m) < 3 {
-		return 0
-	}
-	val, _ := strconv.ParseFloat(m[1], 64)
-	switch m[2] {
-	case "TB":
-		return int(val * 1000)
-	case "KB":
-		return int(val / (1000 * 1000))
-	case "MB":
-		return int(val / 1000)
-	default:
-		return int(val)
-	}
-}
+

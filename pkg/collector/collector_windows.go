@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -138,9 +137,9 @@ func getCPU(runner CommandRunner) (CPUInfo, error) {
 		cpu.MaxClockMHz = cpus[0].MaxClockSpeed
 	} else {
 		cpu.Name = psGet(runner, "Get-WmiObject Win32_Processor", "Name")
-		cpu.Cores = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfCores"))
-		cpu.LogicalProcessors = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfLogicalProcessors"))
-		cpu.MaxClockMHz = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "MaxClockSpeed"))
+		cpu.Cores = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfCores"))
+		cpu.LogicalProcessors = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfLogicalProcessors"))
+		cpu.MaxClockMHz = ParseInt(psGet(runner, "Get-WmiObject Win32_Processor", "MaxClockSpeed"))
 	}
 
 	cpu.NameClean = cleanCPUName(cpu.Name)
@@ -153,7 +152,7 @@ func getRAM(runner CommandRunner) (RAMInfo, error) {
 	ram := RAMInfo{}
 
 	totalBytesStr := psGet(runner, "Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory")
-	totalBytes := parseFloat(totalBytesStr)
+	totalBytes := ParseFloat64(totalBytesStr)
 	ram.TotalGB = int(totalBytes / (1024 * 1024 * 1024))
 	if ram.TotalGB > 0 {
 		ram.Formatted = fmt.Sprintf("%dGB", ram.TotalGB)
@@ -196,7 +195,7 @@ func getStorage(runner CommandRunner) ([]StorageInfo, error) {
 
 	var result []StorageInfo
 	for _, d := range drives {
-		sizeGB := int(parseFloat(d.Size) / (1000 * 1000 * 1000))
+		sizeGB := FromBytes(ParseInt64(d.Size)).GB()
 		result = append(result, StorageInfo{
 			Model:        strings.TrimSpace(decodeUint16([]uint16(runeArray(d.Model)))),
 			SerialNumber: strings.TrimSpace(d.SerialNumber),
@@ -382,30 +381,6 @@ ConvertTo-Json -Compress
 }
 
 // ── Helpers de parseo ────────────────────────────
-
-func parseInt(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	return f
-}
 
 func memoryType(typeDetail int) string {
 	types := map[int]string{

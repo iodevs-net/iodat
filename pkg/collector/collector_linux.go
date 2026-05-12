@@ -162,7 +162,7 @@ func getStorage() []StorageInfo {
 
 		s := StorageInfo{
 			Model: readFile(fmt.Sprintf("/sys/block/%s/device/model", name)),
-			SizeGB: parseBlocksToGB(readFile(fmt.Sprintf("/sys/block/%s/size", name))),
+			SizeGB: FromBlocks(ParseInt64(readFile(fmt.Sprintf("/sys/block/%s/size", name)))).GB(),
 		}
 
 		// Serial
@@ -320,7 +320,7 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 
 		// Speed
 		speedStr := readFile(fmt.Sprintf("/sys/class/net/%s/speed", name))
-		n.Speed = parseInt64(speedStr)
+		n.Speed = ParseInt64(speedStr)
 
 		// IP via ip addr (with timeout)
 		if out := runWithTimeout(runner, CmdTimeoutMedium, "ip", "-json", "addr", "show", name); out != "" {
@@ -338,27 +338,4 @@ func getNetwork(runner CommandRunner) []NetworkInfo {
 	return result
 }
 
-func parseBlocksToGB(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	blocks, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	// Un block = 512 bytes
-	return int(blocks * 512 / (1000 * 1000 * 1000))
-}
 
-func parseInt64(s string) int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return n
-}

@@ -4,42 +4,6 @@ package collector
 
 import "testing"
 
-func TestParseInt(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected int
-	}{
-		{"42", 42},
-		{"", 0},
-		{"abc", 0},
-		{"  -5  ", -5},
-	}
-	for _, tc := range tests {
-		got := parseInt(tc.input)
-		if got != tc.expected {
-			t.Errorf("parseInt(%q) = %d, want %d", tc.input, got, tc.expected)
-		}
-	}
-}
-
-func TestParseFloat(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected float64
-	}{
-		{"17179869184", 17179869184},
-		{"", 0},
-		{"abc", 0},
-		{"  1.5  ", 1.5},
-	}
-	for _, tc := range tests {
-		got := parseFloat(tc.input)
-		if got != tc.expected {
-			t.Errorf("parseFloat(%q) = %f, want %f", tc.input, got, tc.expected)
-		}
-	}
-}
-
 func TestMemoryType(t *testing.T) {
 	tests := []struct {
 		input    int
