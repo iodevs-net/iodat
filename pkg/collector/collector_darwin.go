@@ -27,7 +27,7 @@ func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, ar
 
 // Run recolecta todo el inventario en macOS.
 // Compatible con macOS 12 (Monterey) en adelante.
-func Run(runner CommandRunner) (*inventory.Inventory, error) {
+func Run(runner CommandRunner, _ FileSystem) (*inventory.Inventory, error) {
 	inv := &inventory.Inventory{
 		CollectorVersion: "1.0.0",
 	}

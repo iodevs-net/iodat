@@ -13,7 +13,7 @@ import (
 
 // Run recolecta todo el inventario en Windows usando PowerShell + WMI.
 // Compatible con Windows 10/11, Server 2016+.
-func Run(runner CommandRunner) (*inventory.Inventory, error) {
+func Run(runner CommandRunner, _ FileSystem) (*inventory.Inventory, error) {
 	inv := &inventory.Inventory{
 		CollectorVersion: "1.0.0",
 	}
@@ -186,7 +186,7 @@ func getStorage(runner CommandRunner) ([]inventory.StorageInfo, error) {
 	for _, d := range drives {
 		sizeGB := FromBytes(ParseInt64(d.Size)).GB()
 		result = append(result, inventory.StorageInfo{
-			Model:        strings.TrimSpace(decodeUint16([]uint16(runeArray(d.Model)))),
+			Model:        strings.TrimSpace(d.Model),
 			SerialNumber: strings.TrimSpace(d.SerialNumber),
 			SizeGB:       sizeGB,
 			Interface:    strings.TrimSpace(d.InterfaceType),
@@ -207,8 +207,8 @@ func getMotherboard(runner CommandRunner) (inventory.MotherboardInfo, error) {
 		SerialNumber string `json:"SerialNumber"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product,SerialNumber`, &boards); err == nil && len(boards) > 0 {
-		mb.Manufacturer = strings.TrimSpace(decodeUint16([]uint16(runeArray(boards[0].Manufacturer))))
-		mb.Product = strings.TrimSpace(decodeUint16([]uint16(runeArray(boards[0].Product))))
+		mb.Manufacturer = strings.TrimSpace(boards[0].Manufacturer)
+		mb.Product = strings.TrimSpace(boards[0].Product)
 		mb.SerialNumber = strings.TrimSpace(boards[0].SerialNumber)
 	}
 
@@ -254,12 +254,12 @@ func getGPU(runner CommandRunner) ([]inventory.GPUInfo, error) {
 
 func getMonitors(runner CommandRunner) ([]inventory.MonitorInfo, error) {
 	var monitors []struct {
-		MonitorManufacturerID uint16 `json:"MonitorManufacturerID"`
-		Name                  string `json:"Name"`
-		MonitorID             string `json:"MonitorID"`
-		ScreenWidth           uint32 `json:"ScreenWidth"`
-		ScreenHeight          uint32 `json:"ScreenHeight"`
-		SerialNumberID        string `json:"SerialNumberID"`
+		MonitorManufacturerID uint16   `json:"MonitorManufacturerID"`
+		Name                  []uint16 `json:"Name"`
+		MonitorID             []uint16 `json:"MonitorID"`
+		ScreenWidth           uint32   `json:"ScreenWidth"`
+		ScreenHeight          uint32   `json:"ScreenHeight"`
+		SerialNumberID        []uint16 `json:"SerialNumberID"`
 	}
 	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance WmiMonitorID -Namespace root\wmi | Select-Object MonitorManufacturerID,Name,MonitorID,ScreenWidth,ScreenHeight,SerialNumberID`, &monitors); err != nil {
 		return nil, err
@@ -269,8 +269,8 @@ func getMonitors(runner CommandRunner) ([]inventory.MonitorInfo, error) {
 	for _, m := range monitors {
 		mi := inventory.MonitorInfo{
 			Manufacturer: decodeUint16([]uint16{m.MonitorManufacturerID}),
-			Model:        decodeUint16(m.Name[:]),
-			SerialNumber: decodeUint16([]uint16(runeArray(m.SerialNumberID))),
+			Model:        decodeUint16(m.Name),
+			SerialNumber: decodeUint16(m.SerialNumberID),
 		}
 		if m.ScreenWidth > 0 && m.ScreenHeight > 0 {
 			mi.Resolution = fmt.Sprintf("%dx%d", m.ScreenWidth, m.ScreenHeight)
@@ -411,7 +411,4 @@ func decodeUint16(data []uint16) string {
 	return strings.TrimSpace(string(runes))
 }
 
-// runeArray convierte un string en un slice de runas (necesario para WMI).
-func runeArray(s string) []rune {
-	return []rune(s)
-}
+
