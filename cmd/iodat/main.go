@@ -44,7 +44,7 @@ func main() {
 
 	// Recolectar
 	fmt.Fprintf(os.Stderr, "ioDat: Recolectando información del equipo...\n")
-	inv, err := collector.Run()
+	inv, err := collector.Run(collector.OSCommandRunner{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ioDat: Advertencia: %v\n", err)
 	}

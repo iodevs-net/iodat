@@ -3,16 +3,17 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Run recolecta todo el inventario en Windows usando PowerShell + WMI.
 // Compatible con Windows 10/11, Server 2016+.
-func Run() (*Inventory, error) {
+func Run(runner CommandRunner) (*Inventory, error) {
 	inv := &Inventory{
 		CollectorVersion: "1.0.0",
 	}
@@ -24,16 +25,16 @@ func Run() (*Inventory, error) {
 		}
 	}
 
-	inv.Hostname = getHostname()
-	collect("System", func() error { var err error; inv.System, err = getSystemInfo(); return err })
-	collect("CPU", func() error { var err error; inv.CPU, err = getCPU(); return err })
-	collect("RAM", func() error { var err error; inv.RAM, err = getRAM(); return err })
-	collect("Storage", func() error { var err error; inv.Storage, err = getStorage(); return err })
-	collect("Motherboard", func() error { var err error; inv.Motherboard, err = getMotherboard(); return err })
-	collect("GPU", func() error { var err error; inv.GPU, err = getGPU(); return err })
-	collect("Monitors", func() error { var err error; inv.Monitors, err = getMonitors(); return err })
-	collect("Network", func() error { var err error; inv.Network, err = getNetwork(); return err })
-	collect("Software", func() error { var err error; inv.Software, err = getSoftware(); return err })
+	inv.Hostname = getHostname(runner)
+	collect("System", func() error { var err error; inv.System, err = getSystemInfo(runner); return err })
+	collect("CPU", func() error { var err error; inv.CPU, err = getCPU(runner); return err })
+	collect("RAM", func() error { var err error; inv.RAM, err = getRAM(runner); return err })
+	collect("Storage", func() error { var err error; inv.Storage, err = getStorage(runner); return err })
+	collect("Motherboard", func() error { var err error; inv.Motherboard, err = getMotherboard(runner); return err })
+	collect("GPU", func() error { var err error; inv.GPU, err = getGPU(runner); return err })
+	collect("Monitors", func() error { var err error; inv.Monitors, err = getMonitors(runner); return err })
+	collect("Network", func() error { var err error; inv.Network, err = getNetwork(runner); return err })
+	collect("Software", func() error { var err error; inv.Software, err = getSoftware(runner); return err })
 
 	if len(errs) > 0 {
 		return inv, fmt.Errorf("errores parciales (%d): %s", len(errs), strings.Join(errs, "; "))
@@ -41,95 +42,137 @@ func Run() (*Inventory, error) {
 	return inv, nil
 }
 
-func getHostname() string {
-	out, err := ps("hostname")
+// ── Helpers de ejecución ─────────────────────────
+
+// runWithTimeout ejecuta un comando de PowerShell con timeout y retorna stdout
+// recortado. Retorna string vacío si falla o expira.
+func runWithTimeout(runner CommandRunner, timeout time.Duration, script string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := runner.Run(ctx, "powershell", "-NoProfile", "-Command", script)
 	if err != nil {
-		return "DESCONOCIDO"
+		return ""
 	}
-	return strings.TrimSpace(out)
+	return strings.TrimSpace(string(out))
 }
 
-func getSystemInfo() (SystemInfo, error) {
+// runJSON ejecuta un script de PowerShell, canaliza a ConvertTo-Json y parsea
+// el resultado en dest. Retorna error si el comando falla o el JSON es inválido.
+func runJSON(runner CommandRunner, timeout time.Duration, script string, dest interface{}) error {
+	fullScript := script + " | ConvertTo-Json -Compress -Depth 2"
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := runner.Run(ctx, "powershell", "-NoProfile", "-Command", fullScript)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(strings.TrimSpace(string(out))), dest)
+}
+
+// psGet obtiene una propiedad específica de una clase WMI vía PowerShell.
+func psGet(runner CommandRunner, wmiClass, property string) string {
+	script := fmt.Sprintf("(%s).%s", wmiClass, property)
+	return runWithTimeout(runner, CmdTimeoutSlow, script)
+}
+
+// ── Hostname ─────────────────────────────────────
+
+func getHostname(runner CommandRunner) string {
+	out := runWithTimeout(runner, CmdTimeoutFast, "hostname")
+	if out == "" {
+		return "DESCONOCIDO"
+	}
+	return out
+}
+
+// ── System ───────────────────────────────────────
+
+func getSystemInfo(runner CommandRunner) (SystemInfo, error) {
 	si := SystemInfo{}
-	jsonStr := psJSON(`Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer,Model,SystemType`)
-	if err := json.Unmarshal([]byte(jsonStr), &si); err == nil {
-		si.Manufacturer = strings.TrimSpace(si.Manufacturer)
-		si.Model = strings.TrimSpace(si.Model)
+
+	var cs []struct {
+		Manufacturer string `json:"Manufacturer"`
+		Model        string `json:"Model"`
+		SystemType   string `json:"SystemType"`
+	}
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer,Model,SystemType`, &cs); err == nil && len(cs) > 0 {
+		si.Manufacturer = strings.TrimSpace(cs[0].Manufacturer)
+		si.Model = strings.TrimSpace(cs[0].Model)
 	} else {
-		si.Manufacturer = psGet("Get-WmiObject Win32_ComputerSystem", "Manufacturer")
-		si.Model = psGet("Get-WmiObject Win32_ComputerSystem", "Model")
+		// fallback a Get-WmiObject
+		si.Manufacturer = strings.TrimSpace(psGet(runner, "Get-WmiObject Win32_ComputerSystem", "Manufacturer"))
+		si.Model = strings.TrimSpace(psGet(runner, "Get-WmiObject Win32_ComputerSystem", "Model"))
 	}
 
-	si.SerialNumber = strings.TrimSpace(psGet("Get-CimInstance Win32_BIOS", "SerialNumber"))
+	si.SerialNumber = strings.TrimSpace(psGet(runner, "Get-CimInstance Win32_BIOS", "SerialNumber"))
 
-	osJSON := psJSON(`Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture`)
-	var osInfo struct {
+	var osInfo []struct {
 		Caption        string `json:"Caption"`
 		Version        string `json:"Version"`
 		OSArchitecture string `json:"OSArchitecture"`
 	}
-	if err := json.Unmarshal([]byte(osJSON), &osInfo); err == nil {
-		si.OS = strings.TrimSpace(osInfo.Caption)
-		si.OSVersion = strings.TrimSpace(osInfo.Version)
-		si.OSArchitecture = strings.TrimSpace(osInfo.OSArchitecture)
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture`, &osInfo); err == nil && len(osInfo) > 0 {
+		si.OS = strings.TrimSpace(osInfo[0].Caption)
+		si.OSVersion = strings.TrimSpace(osInfo[0].Version)
+		si.OSArchitecture = strings.TrimSpace(osInfo[0].OSArchitecture)
 	}
 
 	return si, nil
 }
 
-func getCPU() (CPUInfo, error) {
+// ── CPU ──────────────────────────────────────────
+
+func getCPU(runner CommandRunner) (CPUInfo, error) {
 	cpu := CPUInfo{}
-	jsonStr := psJSON(`Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed`)
+
 	var cpus []struct {
 		Name                     string `json:"Name"`
 		NumberOfCores            int    `json:"NumberOfCores"`
-		NumberOfLogicalProcessors int   `json:"NumberOfLogicalProcessors"`
+		NumberOfLogicalProcessors int    `json:"NumberOfLogicalProcessors"`
 		MaxClockSpeed            int    `json:"MaxClockSpeed"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &cpus); err == nil && len(cpus) > 0 {
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed`, &cpus); err == nil && len(cpus) > 0 {
 		cpu.Name = strings.TrimSpace(cpus[0].Name)
 		cpu.Cores = cpus[0].NumberOfCores
 		cpu.LogicalProcessors = cpus[0].NumberOfLogicalProcessors
 		cpu.MaxClockMHz = cpus[0].MaxClockSpeed
 	} else {
-		cpu.Name = psGet("Get-WmiObject Win32_Processor", "Name")
-		cpu.Cores = parseInt(psGet("Get-WmiObject Win32_Processor", "NumberOfCores"))
-		cpu.LogicalProcessors = parseInt(psGet("Get-WmiObject Win32_Processor", "NumberOfLogicalProcessors"))
-		cpu.MaxClockMHz = parseInt(psGet("Get-WmiObject Win32_Processor", "MaxClockSpeed"))
+		cpu.Name = psGet(runner, "Get-WmiObject Win32_Processor", "Name")
+		cpu.Cores = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfCores"))
+		cpu.LogicalProcessors = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "NumberOfLogicalProcessors"))
+		cpu.MaxClockMHz = parseInt(psGet(runner, "Get-WmiObject Win32_Processor", "MaxClockSpeed"))
 	}
 
 	cpu.NameClean = cleanCPUName(cpu.Name)
 	return cpu, nil
 }
 
-func getRAM() (RAMInfo, error) {
+// ── RAM ──────────────────────────────────────────
+
+func getRAM(runner CommandRunner) (RAMInfo, error) {
 	ram := RAMInfo{}
 
-	totalBytesStr := psGet("Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory")
+	totalBytesStr := psGet(runner, "Get-CimInstance Win32_ComputerSystem", "TotalPhysicalMemory")
 	totalBytes := parseFloat(totalBytesStr)
 	ram.TotalGB = int(totalBytes / (1024 * 1024 * 1024))
-	if ram.TotalGB <= 0 {
-		ram.TotalGB = int(totalBytes / (1000 * 1000 * 1000))
-	}
 	if ram.TotalGB > 0 {
 		ram.Formatted = fmt.Sprintf("%dGB", ram.TotalGB)
 	}
 
-	jsonStr := psJSON(`Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,FormFactor,@{N='TypeDetail';E={$_.SMBIOSMemoryType}}`)
 	var slots []struct {
-		BankLabel  string `json:"BankLabel"`
-		Capacity   string `json:"Capacity"`
-		Speed      int    `json:"Speed"`
-		TypeDetail int    `json:"TypeDetail"`
+		BankLabel       string `json:"BankLabel"`
+		Capacity        int64  `json:"Capacity"`
+		Speed           int    `json:"Speed"`
+		MemoryType      int    `json:"MemoryType"`
+		ConfiguredClock int    `json:"ConfiguredClockSpeed"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &slots); err == nil {
-		for _, s := range slots {
-			capBytes := parseFloat(s.Capacity)
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel,Capacity,Speed,MemoryType,ConfiguredClockSpeed`, &slots); err == nil {
+		for _, slot := range slots {
 			ram.Slots = append(ram.Slots, RAMSlot{
-				BankLabel: strings.TrimSpace(s.BankLabel),
-				SizeGB:    int(capBytes / (1024 * 1024 * 1024)),
-				SpeedMHz:  s.Speed,
-				Type:      memoryType(s.TypeDetail),
+				BankLabel: strings.TrimSpace(slot.BankLabel),
+				SizeGB:    int(slot.Capacity / (1024 * 1024 * 1024)),
+				SpeedMHz:  slot.Speed,
+				Type:      memoryType(slot.MemoryType),
 			})
 		}
 	}
@@ -137,126 +180,150 @@ func getRAM() (RAMInfo, error) {
 	return ram, nil
 }
 
-func getStorage() ([]StorageInfo, error) {
-	jsonStr := psJSON(`Get-CimInstance Win32_DiskDrive | Select-Object Model,SerialNumber,Size,InterfaceType,MediaType | Where-Object { $_.Size -gt 0 }`)
-	var disks []struct {
-		Model         string `json:"Model"`
-		SerialNumber  string `json:"SerialNumber"`
-		Size          string `json:"Size"`
+// ── Storage ──────────────────────────────────────
+
+func getStorage(runner CommandRunner) ([]StorageInfo, error) {
+	var drives []struct {
+		Model        string `json:"Model"`
+		SerialNumber string `json:"SerialNumber"`
+		Size         string `json:"Size"`
 		InterfaceType string `json:"InterfaceType"`
-		MediaType     string `json:"MediaType"`
+		MediaType    string `json:"MediaType"`
 	}
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_DiskDrive | Select-Object Model,SerialNumber,Size,InterfaceType,MediaType`, &drives); err != nil {
+		return nil, err
+	}
+
 	var result []StorageInfo
-	if err := json.Unmarshal([]byte(jsonStr), &disks); err == nil {
-		for _, d := range disks {
-			sizeBytes := parseFloat(d.Size)
-			result = append(result, StorageInfo{
-				Model:        strings.TrimSpace(d.Model),
-				SerialNumber: strings.TrimSpace(d.SerialNumber),
-				SizeGB:       int(sizeBytes / (1000 * 1000 * 1000)),
-				Interface:    strings.TrimSpace(d.InterfaceType),
-				Type:         diskType(d.MediaType),
-			})
-		}
+	for _, d := range drives {
+		sizeGB := int(parseFloat(d.Size) / (1000 * 1000 * 1000))
+		result = append(result, StorageInfo{
+			Model:        strings.TrimSpace(decodeUint16([]uint16(runeArray(d.Model)))),
+			SerialNumber: strings.TrimSpace(d.SerialNumber),
+			SizeGB:       sizeGB,
+			Interface:    strings.TrimSpace(d.InterfaceType),
+			Type:         diskType(d.MediaType),
+		})
 	}
 	return result, nil
 }
 
-func getMotherboard() (MotherboardInfo, error) {
+// ── Motherboard ──────────────────────────────────
+
+func getMotherboard(runner CommandRunner) (MotherboardInfo, error) {
 	mb := MotherboardInfo{}
-	jsonStr := psJSON(`Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product,SerialNumber`)
+
 	var boards []struct {
 		Manufacturer string `json:"Manufacturer"`
 		Product      string `json:"Product"`
 		SerialNumber string `json:"SerialNumber"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &boards); err == nil && len(boards) > 0 {
-		mb.Manufacturer = strings.TrimSpace(boards[0].Manufacturer)
-		mb.Product = strings.TrimSpace(boards[0].Product)
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product,SerialNumber`, &boards); err == nil && len(boards) > 0 {
+		mb.Manufacturer = strings.TrimSpace(decodeUint16([]uint16(runeArray(boards[0].Manufacturer))))
+		mb.Product = strings.TrimSpace(decodeUint16([]uint16(runeArray(boards[0].Product))))
 		mb.SerialNumber = strings.TrimSpace(boards[0].SerialNumber)
 	}
 
-	biosJSON := psJSON(`Get-CimInstance Win32_BIOS | Select-Object SMBIOSBIOSVersion,ReleaseDate`)
-	var bioses []struct {
+	var bios []struct {
 		SMBIOSBIOSVersion string `json:"SMBIOSBIOSVersion"`
 		ReleaseDate       string `json:"ReleaseDate"`
 	}
-	if err := json.Unmarshal([]byte(biosJSON), &bioses); err == nil && len(bioses) > 0 {
-		mb.BIOSVersion = strings.TrimSpace(bioses[0].SMBIOSBIOSVersion)
-		mb.BIOSDate = strings.TrimSpace(bioses[0].ReleaseDate)
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_BIOS | Select-Object SMBIOSBIOSVersion,ReleaseDate`, &bios); err == nil && len(bios) > 0 {
+		mb.BIOSVersion = strings.TrimSpace(bios[0].SMBIOSBIOSVersion)
+		mb.BIOSDate = strings.TrimSpace(bios[0].ReleaseDate)
 	}
 
 	return mb, nil
 }
 
-func getGPU() ([]GPUInfo, error) {
-	jsonStr := psJSON(`Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion`)
-	var cards []struct {
-		Name          string `json:"Name"`
-		AdapterRAM    string `json:"AdapterRAM"`
-		DriverVersion string `json:"DriverVersion"`
+// ── GPU ──────────────────────────────────────────
+
+func getGPU(runner CommandRunner) ([]GPUInfo, error) {
+	var adapters []struct {
+		Name              string `json:"Name"`
+		AdapterRAM        int64  `json:"AdapterRAM"`
+		DriverVersion     string `json:"DriverVersion"`
 	}
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion`, &adapters); err != nil {
+		return nil, err
+	}
+
 	var result []GPUInfo
-	if err := json.Unmarshal([]byte(jsonStr), &cards); err == nil {
-		for _, c := range cards {
-			ramBytes := parseFloat(c.AdapterRAM)
-			result = append(result, GPUInfo{
-				Name:          strings.TrimSpace(c.Name),
-				MemoryGB:      int(ramBytes / (1024 * 1024 * 1024)),
-				DriverVersion: strings.TrimSpace(c.DriverVersion),
-			})
+	for _, a := range adapters {
+		gpu := GPUInfo{
+			Name:          strings.TrimSpace(a.Name),
+			DriverVersion: strings.TrimSpace(a.DriverVersion),
 		}
+		if a.AdapterRAM > 0 {
+			gpu.MemoryGB = int(a.AdapterRAM / (1024 * 1024 * 1024))
+		}
+		result = append(result, gpu)
 	}
 	return result, nil
 }
 
-func getMonitors() ([]MonitorInfo, error) {
-	jsonStr := psJSON(`Get-CimInstance WmiMonitorID -Namespace root/wmi | Select-Object ManufacturerName,ProductName,SerialNumberID,UserFriendlyName 2>$null`)
+// ── Monitors ─────────────────────────────────────
+
+func getMonitors(runner CommandRunner) ([]MonitorInfo, error) {
 	var monitors []struct {
-		ManufacturerName []uint16 `json:"ManufacturerName"`
-		ProductName      []uint16 `json:"ProductName"`
-		SerialNumberID   []uint16 `json:"SerialNumberID"`
+		MonitorManufacturerID uint16 `json:"MonitorManufacturerID"`
+		Name                 string `json:"Name"`
+		MonitorID            string `json:"MonitorID"`
+		ScreenWidth          uint32 `json:"ScreenWidth"`
+		ScreenHeight         uint32 `json:"ScreenHeight"`
+		SerialNumberID       string `json:"SerialNumberID"`
 	}
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance WmiMonitorID -Namespace root\wmi | Select-Object MonitorManufacturerID,Name,MonitorID,ScreenWidth,ScreenHeight,SerialNumberID`, &monitors); err != nil {
+		return nil, err
+	}
+
 	var result []MonitorInfo
-	if err := json.Unmarshal([]byte(jsonStr), &monitors); err == nil {
-		for _, m := range monitors {
-			result = append(result, MonitorInfo{
-				Manufacturer: decodeUint16(m.ManufacturerName),
-				Model:        decodeUint16(m.ProductName),
-				SerialNumber: decodeUint16(m.SerialNumberID),
-			})
+	for _, m := range monitors {
+		mi := MonitorInfo{
+			Manufacturer: decodeUint16([]uint16{m.MonitorManufacturerID}),
+			Model:        decodeUint16(m.Name[:]),
+			SerialNumber: decodeUint16([]uint16(runeArray(m.SerialNumberID))),
+		}
+		if m.ScreenWidth > 0 && m.ScreenHeight > 0 {
+			mi.Resolution = fmt.Sprintf("%dx%d", m.ScreenWidth, m.ScreenHeight)
+		}
+		if mi.Model != "" {
+			result = append(result, mi)
 		}
 	}
 	return result, nil
 }
 
-func getNetwork() ([]NetworkInfo, error) {
-	jsonStr := psJSON(`Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.PhysicalAdapter -eq $true -and $_.MACAddress -ne $null } | Select-Object Name,MACAddress,Speed,DhcpEnabled`)
+// ── Network ──────────────────────────────────────
+
+func getNetwork(runner CommandRunner) ([]NetworkInfo, error) {
 	var adapters []struct {
 		Name        string `json:"Name"`
 		MACAddress  string `json:"MACAddress"`
 		Speed       int64  `json:"Speed"`
+		NetEnabled  bool   `json:"NetEnabled"`
 		DhcpEnabled bool   `json:"DhcpEnabled"`
 	}
-	var result []NetworkInfo
-	if err := json.Unmarshal([]byte(jsonStr), &adapters); err == nil {
-		for _, a := range adapters {
-			result = append(result, NetworkInfo{
-				Name:        strings.TrimSpace(a.Name),
-				MACAddress:  strings.TrimSpace(a.MACAddress),
-				Speed:       a.Speed,
-				DHCPEnabled: a.DhcpEnabled,
-			})
-		}
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.NetEnabled -eq $true } | Select-Object Name,MACAddress,Speed,NetEnabled,DhcpEnabled`, &adapters); err != nil {
+		return nil, err
 	}
 
-	ipJSON := psJSON(`Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPAddress -ne $null } | Select-Object Index,IPAddress,@{N='DHCPEnabled';E={$_.DHCPEnabled}}`)
+	var result []NetworkInfo
+	for _, a := range adapters {
+		result = append(result, NetworkInfo{
+			Name:       strings.TrimSpace(a.Name),
+			MACAddress: strings.TrimSpace(a.MACAddress),
+			Speed:      a.Speed,
+			DHCPEnabled: a.DhcpEnabled,
+		})
+	}
+
 	var ips []struct {
 		Index       int      `json:"Index"`
 		IPAddress   []string `json:"IPAddress"`
 		DHCPEnabled bool     `json:"DHCPEnabled"`
 	}
-	if err := json.Unmarshal([]byte(ipJSON), &ips); err == nil {
+	if err := runJSON(runner, CmdTimeoutSlow, `Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPAddress -ne $null } | Select-Object Index,IPAddress,@{N='DHCPEnabled';E={$_.DHCPEnabled}}`, &ips); err == nil {
 		for i := range result {
 			for _, ip := range ips {
 				for _, addr := range ip.IPAddress {
@@ -273,7 +340,9 @@ func getNetwork() ([]NetworkInfo, error) {
 	return result, nil
 }
 
-func getSoftware() ([]SoftwareInfo, error) {
+// ── Software ─────────────────────────────────────
+
+func getSoftware(runner CommandRunner) ([]SoftwareInfo, error) {
 	script := `
 $paths = @(
 	"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
@@ -283,9 +352,9 @@ Get-ItemProperty $paths 2>$null | Where-Object { $_.DisplayName -ne $null } |
 Select-Object @{N='Name';E={$_.DisplayName}}, @{N='Version';E={$_.DisplayVersion}}, @{N='Publisher';E={$_.Publisher}}, @{N='InstallDate';E={$_.InstallDate}} | 
 ConvertTo-Json -Compress
 `
-	out, err := psRaw(script)
-	if err != nil {
-		return nil, err
+	out := runWithTimeout(runner, CmdTimeoutSlow, script)
+	if out == "" {
+		return nil, nil
 	}
 
 	var software []struct {
@@ -312,45 +381,7 @@ ConvertTo-Json -Compress
 	return result, nil
 }
 
-// ── Helpers ──────────────────────────────────────
-
-func ps(script string) (string, error) {
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
-}
-
-func psRaw(script string) (string, error) {
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func psJSON(script string) string {
-	fullScript := script + " | ConvertTo-Json -Compress -Depth 2"
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", fullScript)
-	out, err := cmd.Output()
-	if err != nil {
-		return "[]"
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func psGet(wmiClass, property string) string {
-	script := fmt.Sprintf("(%s).%s", wmiClass, property)
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
+// ── Helpers de parseo ────────────────────────────
 
 func parseInt(s string) int {
 	s = strings.TrimSpace(s)
@@ -414,4 +445,9 @@ func decodeUint16(data []uint16) string {
 		runes[i] = rune(v)
 	}
 	return strings.TrimSpace(string(runes))
+}
+
+// runeArray convierte un string en un slice de runas (necesario para WMI).
+func runeArray(s string) []rune {
+	return []rune(s)
 }

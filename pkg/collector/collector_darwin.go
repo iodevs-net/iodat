@@ -3,53 +3,50 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// Run recolecta todo el inventario en macOS.
-// Compatible con macOS 12 (Monterey) en adelante.
-func Run() (*Inventory, error) {
-	inv := &Inventory{
-		CollectorVersion: "1.0.0",
-	}
-
-	inv.Hostname = runCmd("hostname")
-	inv.System = getSystemInfo()
-	inv.CPU = getCPU()
-	inv.RAM = getRAM()
-	inv.Storage = getStorage()
-	inv.Motherboard = getMotherboard()
-	inv.GPU = getGPU()
-	inv.Monitors = getMonitors()
-	inv.Network = getNetwork()
-
-	return inv, nil
-}
-
-func runCmd(name string, args ...string) string {
-	out, err := exec.Command(name, args...).Output()
+// runWithTimeout executes a command with a context timeout and returns
+// trimmed stdout. Returns empty string if the command fails or times out.
+func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := runner.Run(ctx, name, args...)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
 }
 
-func runJSON(script string) string {
-	out, err := exec.Command("bash", "-c", script).Output()
-	if err != nil {
-		return "{}"
+// Run recolecta todo el inventario en macOS.
+// Compatible con macOS 12 (Monterey) en adelante.
+func Run(runner CommandRunner) (*Inventory, error) {
+	inv := &Inventory{
+		CollectorVersion: "1.0.0",
 	}
-	return strings.TrimSpace(string(out))
+
+	inv.Hostname = runWithTimeout(runner, CmdTimeoutFast, "hostname")
+	inv.System = getSystemInfo(runner)
+	inv.CPU = getCPU(runner)
+	inv.RAM = getRAM(runner)
+	inv.Storage = getStorage(runner)
+	inv.Motherboard = getMotherboard(runner)
+	inv.GPU = getGPU(runner)
+	inv.Monitors = getMonitors(runner)
+	inv.Network = getNetwork(runner)
+
+	return inv, nil
 }
 
-func getSystemInfo() SystemInfo {
+func getSystemInfo(runner CommandRunner) SystemInfo {
 	si := SystemInfo{}
-	sp := runJSON(`system_profiler SPHardwareDataType -json`)
+	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPHardwareDataType", "-json")
 
 	var hw struct {
 		SPHardwareDataType []struct {
@@ -66,7 +63,7 @@ func getSystemInfo() SystemInfo {
 		si.SerialNumber = strings.TrimSpace(d.SerialNumber)
 	}
 
-	sw := runJSON(`system_profiler SPSoftwareDataType -json`)
+	sw := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPSoftwareDataType", "-json")
 	var swData struct {
 		SPSoftwareDataType []struct {
 			OSVersion     string `json:"os_version"`
@@ -77,21 +74,21 @@ func getSystemInfo() SystemInfo {
 		si.OS = "macOS"
 		si.OSVersion = strings.TrimSpace(swData.SPSoftwareDataType[0].OSVersion)
 	}
-	si.OSArchitecture = runCmd("uname", "-m")
+	si.OSArchitecture = runWithTimeout(runner, CmdTimeoutFast, "uname", "-m")
 
 	return si
 }
 
-func getCPU() CPUInfo {
+func getCPU(runner CommandRunner) CPUInfo {
 	cpu := CPUInfo{}
-	cpu.Name = runCmd("sysctl", "-n", "machdep.cpu.brand_string")
+	cpu.Name = runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "machdep.cpu.brand_string")
 	cpu.NameClean = cleanCPUName(cpu.Name)
 
-	cores := runCmd("sysctl", "-n", "machdep.cpu.core_count")
+	cores := runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "machdep.cpu.core_count")
 	cpu.Cores, _ = strconv.Atoi(cores)
-	logical := runCmd("sysctl", "-n", "machdep.cpu.thread_count")
+	logical := runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "machdep.cpu.thread_count")
 	cpu.LogicalProcessors, _ = strconv.Atoi(logical)
-	mhz := runCmd("sysctl", "-n", "hw.cpufrequency_max")
+	mhz := runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "hw.cpufrequency_max")
 	if mhz != "" {
 		if freq, err := strconv.Atoi(mhz); err == nil {
 			cpu.MaxClockMHz = freq / (1000 * 1000) // hw.cpufrequency_max está en Hz
@@ -101,9 +98,9 @@ func getCPU() CPUInfo {
 	return cpu
 }
 
-func getRAM() RAMInfo {
+func getRAM(runner CommandRunner) RAMInfo {
 	ram := RAMInfo{}
-	memStr := runCmd("sysctl", "-n", "hw.memsize")
+	memStr := runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "hw.memsize")
 	memBytes, _ := strconv.ParseFloat(memStr, 64)
 	ram.TotalGB = int(memBytes / (1024 * 1024 * 1024))
 	if ram.TotalGB > 0 {
@@ -111,7 +108,7 @@ func getRAM() RAMInfo {
 	}
 
 	// Slots de RAM via system_profiler
-	sp := runJSON(`system_profiler SPMemoryDataType -json`)
+	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPMemoryDataType", "-json")
 	var mem struct {
 		SPMemoryDataType []struct {
 			Items []struct {
@@ -138,10 +135,10 @@ func getRAM() RAMInfo {
 	return ram
 }
 
-func getStorage() []StorageInfo {
+func getStorage(runner CommandRunner) []StorageInfo {
 	var result []StorageInfo
 
-	sp := runJSON(`system_profiler SPStorageDataType -json`)
+	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPStorageDataType", "-json")
 	var storage struct {
 		SPStorageDataType []struct {
 			ItemName      string `json:"_name"`
@@ -179,27 +176,27 @@ func getStorage() []StorageInfo {
 	return result
 }
 
-func getMotherboard() MotherboardInfo {
+func getMotherboard(runner CommandRunner) MotherboardInfo {
 	mb := MotherboardInfo{}
 	mb.Manufacturer = "Apple"
-	mb.Product = runCmd("sysctl", "-n", "hw.model")
+	mb.Product = runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "hw.model")
 
 	// Serial del sistema (si no viene de SPHardwareDataType)
-	if serial := runCmd("ioreg", "-l"); serial != "" {
+	if serial := runWithTimeout(runner, CmdTimeoutMedium, "ioreg", "-l"); serial != "" {
 		re := regexp.MustCompile(`"IOPlatformSerialNumber"\s*=\s*"([^"]+)"`)
 		if m := re.FindStringSubmatch(serial); m != nil {
 			mb.SerialNumber = m[1]
 		}
 	}
 
-	mb.BIOSVersion = runCmd("sysctl", "-n", "kern.osversion")
+	mb.BIOSVersion = runWithTimeout(runner, CmdTimeoutFast, "sysctl", "-n", "kern.osversion")
 	return mb
 }
 
-func getGPU() []GPUInfo {
+func getGPU(runner CommandRunner) []GPUInfo {
 	var result []GPUInfo
 
-	sp := runJSON(`system_profiler SPDisplaysDataType -json`)
+	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPDisplaysDataType", "-json")
 	var disp struct {
 		SPDisplaysDataType []struct {
 			ChipsetModel string `json:"sppci_model"`
@@ -232,10 +229,10 @@ func getGPU() []GPUInfo {
 	return result
 }
 
-func getMonitors() []MonitorInfo {
+func getMonitors(runner CommandRunner) []MonitorInfo {
 	var result []MonitorInfo
 
-	sp := runJSON(`system_profiler SPDisplaysDataType -json`)
+	sp := runWithTimeout(runner, CmdTimeoutSlow, "system_profiler", "SPDisplaysDataType", "-json")
 	var disp struct {
 		SPDisplaysDataType []struct {
 			Displays []struct {
@@ -265,11 +262,11 @@ func getMonitors() []MonitorInfo {
 	return result
 }
 
-func getNetwork() []NetworkInfo {
+func getNetwork(runner CommandRunner) []NetworkInfo {
 	var result []NetworkInfo
 
-	out, err := exec.Command("ifconfig").Output()
-	if err != nil {
+	out := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig")
+	if out == "" {
 		return result
 	}
 
@@ -292,9 +289,9 @@ func getNetwork() []NetworkInfo {
 		}
 	}
 
-	// Enriquecer con velocidad desde networksetup
+	// Enriquecer con velocidad desde ifconfig
 	for i := range result {
-		speed := runCmd("ifconfig", result[i].Name, "media")
+		speed := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", result[i].Name, "media")
 		if speed != "" {
 			re := regexp.MustCompile(`(\d+)baseT`)
 			if m := re.FindStringSubmatch(speed); m != nil {

@@ -3,29 +3,42 @@
 package collector
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
+// runWithTimeout executes a command with a context timeout and returns
+// trimmed stdout. Returns empty string if the command fails or times out.
+func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := runner.Run(ctx, name, args...)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // Run recolecta todo el inventario en Linux.
-func Run() (*Inventory, error) {
+func Run(runner CommandRunner) (*Inventory, error) {
 	inv := &Inventory{
 		CollectorVersion: "1.0.0",
 	}
 
 	inv.Hostname = readFile("/proc/sys/kernel/hostname")
-	inv.System = getSystemInfo()
+	inv.System = getSystemInfo(runner)
 	inv.CPU = getCPU()
 	inv.RAM = getRAM()
 	inv.Storage = getStorage()
 	inv.Motherboard = getMotherboard()
-	inv.GPU = getGPU()
+	inv.GPU = getGPU(runner)
 	inv.Monitors = getMonitors()
-	inv.Network = getNetwork()
+	inv.Network = getNetwork(runner)
 
 	return inv, nil
 }
@@ -38,7 +51,7 @@ func readFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-func getSystemInfo() SystemInfo {
+func getSystemInfo(runner CommandRunner) SystemInfo {
 	si := SystemInfo{}
 	si.Manufacturer = readFile("/sys/class/dmi/id/sys_vendor")
 	si.Model = readFile("/sys/class/dmi/id/product_name")
@@ -55,13 +68,9 @@ func getSystemInfo() SystemInfo {
 		si.OS = readFile("/etc/hostname") // fallback
 	}
 
-	// UName
-	if out, err := exec.Command("uname", "-r").Output(); err == nil {
-		si.OSVersion = strings.TrimSpace(string(out))
-	}
-	if out, err := exec.Command("uname", "-m").Output(); err == nil {
-		si.OSArchitecture = strings.TrimSpace(string(out))
-	}
+	// UName with timeout
+	si.OSVersion = runWithTimeout(runner, CmdTimeoutFast, "uname", "-r")
+	si.OSArchitecture = runWithTimeout(runner, CmdTimeoutFast, "uname", "-m")
 
 	return si
 }
@@ -199,13 +208,13 @@ func getMotherboard() MotherboardInfo {
 	return mb
 }
 
-func getGPU() []GPUInfo {
+func getGPU(runner CommandRunner) []GPUInfo {
 	var result []GPUInfo
 
 	// Método 1: lspci (estándar en la mayoría de distros)
-	if out, err := exec.Command("lspci", "-mm").Output(); err == nil {
+	if out := runWithTimeout(runner, CmdTimeoutMedium, "lspci", "-mm"); out != "" {
 		re := regexp.MustCompile(`(?i)(VGA|3D|Display).*\[(.*?)\]`)
-		for _, line := range strings.Split(string(out), "\n") {
+		for _, line := range strings.Split(out, "\n") {
 			if re.MatchString(line) {
 				parts := strings.Split(line, "\"")
 				if len(parts) >= 5 {
@@ -289,7 +298,7 @@ func getMonitors() []MonitorInfo {
 	return result
 }
 
-func getNetwork() []NetworkInfo {
+func getNetwork(runner CommandRunner) []NetworkInfo {
 	var result []NetworkInfo
 
 	// /sys/class/net
@@ -313,12 +322,11 @@ func getNetwork() []NetworkInfo {
 		speedStr := readFile(fmt.Sprintf("/sys/class/net/%s/speed", name))
 		n.Speed = parseInt64(speedStr)
 
-		// IP via ip addr
-		out, _ := exec.Command("ip", "-json", "addr", "show", name).Output()
-		if len(out) > 0 {
+		// IP via ip addr (with timeout)
+		if out := runWithTimeout(runner, CmdTimeoutMedium, "ip", "-json", "addr", "show", name); out != "" {
 			// Simple parsing: buscar inet
 			re := regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)`)
-			matches := re.FindStringSubmatch(string(out))
+			matches := re.FindStringSubmatch(out)
 			if len(matches) > 1 {
 				n.IPAddress = matches[1]
 			}
