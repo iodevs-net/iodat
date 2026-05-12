@@ -265,41 +265,59 @@ func getMonitors(runner CommandRunner) []MonitorInfo {
 func getNetwork(runner CommandRunner) []NetworkInfo {
 	var result []NetworkInfo
 
-	out := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig")
-	if out == "" {
+	// Listar interfaces con ifconfig -l (formato estable, espacio-separado)
+	ifaces := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", "-l")
+	if ifaces == "" {
 		return result
 	}
 
-	re := regexp.MustCompile(`^([a-z0-9]+):.*`)
-	macRe := regexp.MustCompile(`ether\s+([0-9a-f:]+)`)
-	ipRe := regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)`)
-
-	var current string
-	for _, line := range strings.Split(string(out), "\n") {
-		if m := re.FindStringSubmatch(line); m != nil {
-			current = m[1]
-			if current == "lo0" {
-				continue
-			}
-			result = append(result, NetworkInfo{Name: current})
-		} else if m := macRe.FindStringSubmatch(line); m != nil && len(result) > 0 {
-			result[len(result)-1].MACAddress = m[1]
-		} else if m := ipRe.FindStringSubmatch(line); m != nil && len(result) > 0 {
-			result[len(result)-1].IPAddress = m[1]
+	for _, name := range strings.Fields(ifaces) {
+		if name == "lo0" {
+			continue
 		}
-	}
 
-	// Enriquecer con velocidad desde ifconfig
-	for i := range result {
-		speed := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", result[i].Name, "media")
-		if speed != "" {
-			re := regexp.MustCompile(`(\d+)baseT`)
-			if m := re.FindStringSubmatch(speed); m != nil {
-				if s, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-					result[i].Speed = s
+		ni := NetworkInfo{Name: name}
+
+		// Obtener detalle por interfaz
+		out := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", name)
+		if out == "" {
+			result = append(result, ni)
+			continue
+		}
+
+		for _, line := range strings.Split(out, "\n") {
+			line = strings.TrimSpace(line)
+
+			// MAC address: línea que comienza con "ether "
+			if strings.HasPrefix(line, "ether ") {
+				if parts := strings.Fields(line); len(parts) >= 2 {
+					ni.MACAddress = parts[1]
+				}
+			}
+
+			// IPv4: línea que comienza con "inet "
+			if strings.HasPrefix(line, "inet ") {
+				if parts := strings.Fields(line); len(parts) >= 2 {
+					ni.IPAddress = parts[1]
 				}
 			}
 		}
+
+		// Velocidad via ifconfig <name> media
+		speed := runWithTimeout(runner, CmdTimeoutMedium, "ifconfig", name, "media")
+		if speed != "" {
+			for _, word := range strings.Fields(speed) {
+				if strings.HasSuffix(word, "baseT") {
+					speedStr := strings.TrimSuffix(word, "baseT")
+					if s, err := strconv.ParseInt(speedStr, 10, 64); err == nil {
+						ni.Speed = s
+						break
+					}
+				}
+			}
+		}
+
+		result = append(result, ni)
 	}
 
 	return result
