@@ -180,10 +180,21 @@ make run      # Ejecutar localmente
 
 ---
 
+## Licencia
+
+ioDat se distribuye bajo licencia **MIT**. Ver [LICENSE](LICENSE).
+Eres libre de usar, modificar y distribuir este software
+siempre que mantengas el aviso de copyright original.
+
+---
+
 ## Créditos
 
-Desarrollado por **Leonardo Vergara** — [iodevs.net](https://iodevs.net)
-para **IONET SpA** — [ionet.cl](https://ionet.cl)
+Desarrollado por **Leonardo Vergara**
+  — [lvergara@iodevs.net](mailto:lvergara@iodevs.net)
+  — [leonardovergaramarin@gmail.com](mailto:leonardovergaramarin@gmail.com)
+  — [iodevs.net](https://iodevs.net)
+para **IONET Ltda.** — [ionet.cl](https://ionet.cl)
 
 ---
 
