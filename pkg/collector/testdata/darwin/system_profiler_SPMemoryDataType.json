@@ -1,0 +1,16 @@
+{
+  "SPMemoryDataType" : [ {
+    "_name" : "SPMemoryDataType",
+    "_items" : [ {
+      "_name" : "DIMM1",
+      "dimm_size" : "16 GB",
+      "dimm_type" : "DDR5",
+      "dimm_speed" : "4800 MHz"
+    }, {
+      "_name" : "DIMM2",
+      "dimm_size" : "16 GB",
+      "dimm_type" : "DDR5",
+      "dimm_speed" : "4800 MHz"
+    } ]
+  } ]
+}

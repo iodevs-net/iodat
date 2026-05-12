@@ -1,6 +1,10 @@
 package collector
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ionet-cl/iodat/pkg/inventory"
+)
 
 func TestCleanCPUName(t *testing.T) {
 	tests := []struct {
@@ -20,6 +24,138 @@ func TestCleanCPUName(t *testing.T) {
 		got := cleanCPUName(tc.input)
 		if got != tc.expected {
 			t.Errorf("cleanCPUName(%q) = %q, want %q", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestParseInt(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int
+	}{
+		{"42", 42},
+		{"", 0},
+		{"abc", 0},
+		{"  -5  ", -5},
+	}
+	for _, tc := range tests {
+		got := ParseInt(tc.input)
+		if got != tc.expected {
+			t.Errorf("ParseInt(%q) = %d, want %d", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestParseInt64(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"1000", 1000},
+		{"", 0},
+		{"abc", 0},
+		{"  -1  ", -1},
+		{"9223372036854775807", 9223372036854775807},
+	}
+	for _, tc := range tests {
+		got := ParseInt64(tc.input)
+		if got != tc.expected {
+			t.Errorf("ParseInt64(%q) = %d, want %d", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestParseFloat64(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{"17179869184", 17179869184},
+		{"", 0},
+		{"abc", 0},
+		{"  1.5  ", 1.5},
+	}
+	for _, tc := range tests {
+		got := ParseFloat64(tc.input)
+		if got != tc.expected {
+			t.Errorf("ParseFloat64(%q) = %f, want %f", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestFromBlocks(t *testing.T) {
+	tests := []struct {
+		input    int64
+		expected inventory.ByteSize
+	}{
+		{1000215216, inventory.ByteSize(1000215216) * 512},
+		{0, 0},
+		{2000430432, inventory.ByteSize(2000430432) * 512},
+	}
+	for _, tc := range tests {
+		got := FromBlocks(tc.input)
+		if got != tc.expected {
+			t.Errorf("FromBlocks(%d) = %d, want %d", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestFromBytes(t *testing.T) {
+	if got := FromBytes(17179869184); got != inventory.ByteSize(17179869184) {
+		t.Errorf("FromBytes(17179869184) = %d, want %d", got, inventory.ByteSize(17179869184))
+	}
+	if got := FromBytes(0); got != 0 {
+		t.Errorf("FromBytes(0) = %d, want 0", got)
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected inventory.ByteSize
+		wantErr  bool
+	}{
+		{"500.24 GB", inventory.ByteSize(500240000000), false},
+		{"1 TB", 1000000000000, false},
+		{"256 MB", 256000000, false},
+		{"512 KB", 512000, false},
+		{"", 0, true},
+		{"abc", 0, true},
+		{"2.5 TB", 2500000000000, false},
+		{"  16  GB  ", 16000000000, false},
+	}
+	for _, tc := range tests {
+		got, err := ParseByteSize(tc.input)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseByteSize(%q) expected error, got %d", tc.input, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseByteSize(%q) unexpected error: %v", tc.input, err)
+			continue
+		}
+		if got != tc.expected {
+			t.Errorf("ParseByteSize(%q) = %d, want %d", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestByteSizeGB(t *testing.T) {
+	tests := []struct {
+		input    inventory.ByteSize
+		expected int
+	}{
+		{500 * inventory.GB, 500},
+		{inventory.TB, 1000},
+		{0, 0},
+		{1500 * inventory.MB, 1},
+	}
+	for _, tc := range tests {
+		got := tc.input.GB()
+		if got != tc.expected {
+			t.Errorf("%d.GB() = %d, want %d", tc.input, got, tc.expected)
 		}
 	}
 }

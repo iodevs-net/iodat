@@ -3,72 +3,118 @@
 package collector
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"os/exec"
+	"github.com/ionet-cl/iodat/pkg/inventory"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// Run recolecta todo el inventario en Linux.
-func Run() (*Inventory, error) {
-	inv := &Inventory{
-		CollectorVersion: "1.0.0",
+// runWithTimeout executes a command with a context timeout and returns
+// trimmed stdout. Returns empty string if the command fails or times out.
+func runWithTimeout(runner CommandRunner, timeout time.Duration, name string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := runner.Run(ctx, name, args...)
+	if err != nil {
+		return ""
 	}
-
-	inv.Hostname = readFile("/proc/sys/kernel/hostname")
-	inv.System = getSystemInfo()
-	inv.CPU = getCPU()
-	inv.RAM = getRAM()
-	inv.Storage = getStorage()
-	inv.Motherboard = getMotherboard()
-	inv.GPU = getGPU()
-	inv.Monitors = getMonitors()
-	inv.Network = getNetwork()
-
-	return inv, nil
+	return strings.TrimSpace(string(out))
 }
 
-func readFile(path string) string {
-	data, err := os.ReadFile(path)
+// readFile is a convenience helper that reads a file through the FileSystem
+// and returns trimmed content. Returns empty string on error.
+func readFile(fs FileSystem, path string) string {
+	data, err := fs.ReadFile(path)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
 
-func getSystemInfo() SystemInfo {
-	si := SystemInfo{}
-	si.Manufacturer = readFile("/sys/class/dmi/id/sys_vendor")
-	si.Model = readFile("/sys/class/dmi/id/product_name")
-	si.SerialNumber = readFile("/sys/class/dmi/id/product_serial")
+// Run recolecta todo el inventario en Linux.
+func Run(runner CommandRunner, fs FileSystem) (*inventory.Inventory, error) {
+	inv := &inventory.Inventory{
+		CollectorVersion: "1.0.0",
+	}
+	var errs PartialErrors
+
+	inv.Hostname = readFile(fs, "/proc/sys/kernel/hostname")
+	if inv.Hostname == "" {
+		errs.Add("hostname: no se pudo leer")
+	}
+
+	inv.System = getSystemInfo(fs, runner)
+	if inv.System.OS == "" {
+		errs.Add("system: OS info incompleto")
+	}
+	if inv.System.SerialNumber == "" {
+		errs.Add("serial: no se pudo obtener (requiere root en algunas distros)")
+	}
+
+	inv.CPU = getCPU(fs)
+	inv.RAM = getRAM(fs)
+	inv.Storage = getStorage(fs)
+	inv.Motherboard = getMotherboard(fs)
+
+	inv.GPU = getGPU(runner, fs)
+	if len(inv.GPU) == 0 {
+		errs.Add("gpu: no se detectaron adaptadores gráficos")
+	}
+
+	inv.Monitors = getMonitors(fs)
+	if len(inv.Monitors) == 0 {
+		errs.Add("monitors: no se detectaron monitores")
+	}
+
+	inv.Network = getNetwork(runner, fs)
+	if len(inv.Network) == 0 {
+		errs.Add("network: no se detectaron interfaces")
+	}
+
+	return inv, errs.Err()
+}
+
+func getSystemInfo(fs FileSystem, runner CommandRunner) inventory.SystemInfo {
+	si := inventory.SystemInfo{}
+	si.Manufacturer = readFile(fs, "/sys/class/dmi/id/sys_vendor")
+	si.Model = readFile(fs, "/sys/class/dmi/id/product_name")
+
+	// Serial number: múltiples métodos de obtención
+	si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_serial")
+	if si.SerialNumber == "" {
+		// Fallback 1: dmidecode (puede requerir sudo en algunas distros)
+		si.SerialNumber = runWithTimeout(runner, CmdTimeoutFast, "dmidecode", "-s", "system-serial-number")
+	}
+	if si.SerialNumber == "" {
+		// Fallback 2: product_uuid como identificador único de hardware
+		si.SerialNumber = readFile(fs, "/sys/class/dmi/id/product_uuid")
+	}
 
 	// OS info
-	osRelease, _ := os.ReadFile("/etc/os-release")
-	for _, line := range strings.Split(string(osRelease), "\n") {
-		if strings.HasPrefix(line, "PRETTY_NAME=") {
-			si.OS = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+	if osRelease, err := fs.ReadFile("/etc/os-release"); err == nil {
+		for _, line := range strings.Split(string(osRelease), "\n") {
+			if strings.HasPrefix(line, "PRETTY_NAME=") {
+				si.OS = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+			}
 		}
 	}
 	if si.OS == "" {
-		si.OS = readFile("/etc/hostname") // fallback
+		si.OS = readFile(fs, "/etc/hostname") // fallback
 	}
 
-	// UName
-	if out, err := exec.Command("uname", "-r").Output(); err == nil {
-		si.OSVersion = strings.TrimSpace(string(out))
-	}
-	if out, err := exec.Command("uname", "-m").Output(); err == nil {
-		si.OSArchitecture = strings.TrimSpace(string(out))
-	}
+	// UName with timeout
+	si.OSVersion = runWithTimeout(runner, CmdTimeoutFast, "uname", "-r")
+	si.OSArchitecture = runWithTimeout(runner, CmdTimeoutFast, "uname", "-m")
 
 	return si
 }
 
-func getCPU() CPUInfo {
-	cpu := CPUInfo{}
-	data, err := os.ReadFile("/proc/cpuinfo")
+func getCPU(fs FileSystem) inventory.CPUInfo {
+	cpu := inventory.CPUInfo{}
+	data, err := fs.ReadFile("/proc/cpuinfo")
 	if err != nil {
 		return cpu
 	}
@@ -113,9 +159,9 @@ func getCPU() CPUInfo {
 	return cpu
 }
 
-func getRAM() RAMInfo {
-	ram := RAMInfo{}
-	data, err := os.ReadFile("/proc/meminfo")
+func getRAM(fs FileSystem) inventory.RAMInfo {
+	ram := inventory.RAMInfo{}
+	data, err := fs.ReadFile("/proc/meminfo")
 	if err != nil {
 		return ram
 	}
@@ -135,37 +181,35 @@ func getRAM() RAMInfo {
 	return ram
 }
 
-func getStorage() []StorageInfo {
-	var result []StorageInfo
+func getStorage(fs FileSystem) []inventory.StorageInfo {
+	var result []inventory.StorageInfo
 
-	// Leer discos desde /sys/block
-	devices, err := os.ReadDir("/sys/block")
+	devices, err := fs.ReadDir("/sys/block")
 	if err != nil {
 		return result
 	}
 
-	for _, dev := range devices {
-		name := dev.Name()
+	for _, name := range devices {
 		// Saltar loop, ram, sr (CD-ROM)
 		if strings.HasPrefix(name, "loop") || strings.HasPrefix(name, "ram") || strings.HasPrefix(name, "sr") {
 			continue
 		}
 
-		s := StorageInfo{
-			Model: readFile(fmt.Sprintf("/sys/block/%s/device/model", name)),
-			SizeGB: parseBlocksToGB(readFile(fmt.Sprintf("/sys/block/%s/size", name))),
+		s := inventory.StorageInfo{
+			Model:  readFile(fs, fmt.Sprintf("/sys/block/%s/device/model", name)),
+			SizeGB: FromBlocks(ParseInt64(readFile(fs, fmt.Sprintf("/sys/block/%s/size", name)))).GB(),
 		}
 
 		// Serial
-		serial := readFile(fmt.Sprintf("/sys/block/%s/device/serial", name))
-		wwwn := readFile(fmt.Sprintf("/sys/block/%s/device/wwwn", name))
+		serial := readFile(fs, fmt.Sprintf("/sys/block/%s/device/serial", name))
+		wwwn := readFile(fs, fmt.Sprintf("/sys/block/%s/device/wwwn", name))
 		s.SerialNumber = serial
 		if s.SerialNumber == "" {
 			s.SerialNumber = wwwn
 		}
 
 		// Tipo (SSD/HDD)
-		rotational := readFile(fmt.Sprintf("/sys/block/%s/queue/rotational", name))
+		rotational := readFile(fs, fmt.Sprintf("/sys/block/%s/queue/rotational", name))
 		if rotational == "0" {
 			s.Type = "SSD"
 		} else {
@@ -189,27 +233,30 @@ func getStorage() []StorageInfo {
 	return result
 }
 
-func getMotherboard() MotherboardInfo {
-	mb := MotherboardInfo{}
-	mb.Manufacturer = readFile("/sys/class/dmi/id/board_vendor")
-	mb.Product = readFile("/sys/class/dmi/id/board_name")
-	mb.SerialNumber = readFile("/sys/class/dmi/id/board_serial")
-	mb.BIOSVersion = readFile("/sys/class/dmi/id/bios_version")
-	mb.BIOSDate = readFile("/sys/class/dmi/id/bios_date")
+func getMotherboard(fs FileSystem) inventory.MotherboardInfo {
+	mb := inventory.MotherboardInfo{}
+	mb.Manufacturer = readFile(fs, "/sys/class/dmi/id/board_vendor")
+	mb.Product = readFile(fs, "/sys/class/dmi/id/board_name")
+	mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/board_serial")
+	if mb.SerialNumber == "" {
+		mb.SerialNumber = readFile(fs, "/sys/class/dmi/id/chassis_serial")
+	}
+	mb.BIOSVersion = readFile(fs, "/sys/class/dmi/id/bios_version")
+	mb.BIOSDate = readFile(fs, "/sys/class/dmi/id/bios_date")
 	return mb
 }
 
-func getGPU() []GPUInfo {
-	var result []GPUInfo
+func getGPU(runner CommandRunner, fs FileSystem) []inventory.GPUInfo {
+	var result []inventory.GPUInfo
 
 	// Método 1: lspci (estándar en la mayoría de distros)
-	if out, err := exec.Command("lspci", "-mm").Output(); err == nil {
+	if out := runWithTimeout(runner, CmdTimeoutMedium, "lspci", "-mm"); out != "" {
 		re := regexp.MustCompile(`(?i)(VGA|3D|Display).*\[(.*?)\]`)
-		for _, line := range strings.Split(string(out), "\n") {
+		for _, line := range strings.Split(out, "\n") {
 			if re.MatchString(line) {
 				parts := strings.Split(line, "\"")
 				if len(parts) >= 5 {
-					result = append(result, GPUInfo{
+					result = append(result, inventory.GPUInfo{
 						Name: strings.TrimSpace(parts[3]),
 					})
 				}
@@ -221,20 +268,16 @@ func getGPU() []GPUInfo {
 	}
 
 	// Método 2: /sys/class/drm (no requiere lspci)
-	devices, err := os.ReadDir("/sys/class/drm")
+	devices, err := fs.ReadDir("/sys/class/drm")
 	if err == nil {
-		for _, dev := range devices {
-			name := dev.Name()
+		for _, name := range devices {
 			if !strings.HasPrefix(name, "card") || strings.Contains(name, "-") {
 				continue
 			}
-			// Leer vendor del dispositivo
-			vendorPath := fmt.Sprintf("/sys/class/drm/%s/device/vendor", name)
-			devicePath := fmt.Sprintf("/sys/class/drm/%s/device/device", name)
-			vendor := readFile(vendorPath)
-			devID := readFile(devicePath)
+			vendor := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/vendor", name))
+			devID := readFile(fs, fmt.Sprintf("/sys/class/drm/%s/device/device", name))
 			if vendor != "" || devID != "" {
-				result = append(result, GPUInfo{
+				result = append(result, inventory.GPUInfo{
 					Name: fmt.Sprintf("GPU %s:%s", strings.TrimPrefix(vendor, "0x"), strings.TrimPrefix(devID, "0x")),
 				})
 			}
@@ -244,21 +287,19 @@ func getGPU() []GPUInfo {
 	return result
 }
 
-func getMonitors() []MonitorInfo {
-	// EDID parsing from /sys/class/drm/
-	var result []MonitorInfo
-	devices, err := os.ReadDir("/sys/class/drm/")
+func getMonitors(fs FileSystem) []inventory.MonitorInfo {
+	var result []inventory.MonitorInfo
+	devices, err := fs.ReadDir("/sys/class/drm/")
 	if err != nil {
 		return result
 	}
 
-	for _, dev := range devices {
-		name := dev.Name()
+	for _, name := range devices {
 		if !strings.Contains(name, "-") {
 			continue
 		}
 		edidPath := fmt.Sprintf("/sys/class/drm/%s/edid", name)
-		edid, err := os.ReadFile(edidPath)
+		edid, err := fs.ReadFile(edidPath)
 		if err != nil {
 			continue
 		}
@@ -266,7 +307,16 @@ func getMonitors() []MonitorInfo {
 			continue
 		}
 
-		mi := MonitorInfo{}
+		// Validar checksum EDID: suma de bytes 0-127 debe ser 0 mod 256
+		var sum int
+		for _, b := range edid[:128] {
+			sum += int(b)
+		}
+		if sum%256 != 0 {
+			continue
+		}
+
+		mi := inventory.MonitorInfo{}
 		// Manufacturer ID (bytes 8-9 en EDID)
 		if len(edid) > 10 {
 			mf := string([]byte{edid[8] + 'A' - 1, edid[9] + 'A' - 1, edid[10] + 'A' - 1})
@@ -289,36 +339,32 @@ func getMonitors() []MonitorInfo {
 	return result
 }
 
-func getNetwork() []NetworkInfo {
-	var result []NetworkInfo
+func getNetwork(runner CommandRunner, fs FileSystem) []inventory.NetworkInfo {
+	var result []inventory.NetworkInfo
 
-	// /sys/class/net
-	interfaces, err := os.ReadDir("/sys/class/net")
+	interfaces, err := fs.ReadDir("/sys/class/net")
 	if err != nil {
 		return result
 	}
 
-	for _, iface := range interfaces {
-		name := iface.Name()
+	for _, name := range interfaces {
 		if name == "lo" {
 			continue
 		}
 
-		n := NetworkInfo{
+		n := inventory.NetworkInfo{
 			Name:       name,
-			MACAddress: readFile(fmt.Sprintf("/sys/class/net/%s/address", name)),
+			MACAddress: readFile(fs, fmt.Sprintf("/sys/class/net/%s/address", name)),
 		}
 
 		// Speed
-		speedStr := readFile(fmt.Sprintf("/sys/class/net/%s/speed", name))
-		n.Speed = parseInt64(speedStr)
+		speedStr := readFile(fs, fmt.Sprintf("/sys/class/net/%s/speed", name))
+		n.Speed = ParseInt64(speedStr)
 
-		// IP via ip addr
-		out, _ := exec.Command("ip", "-json", "addr", "show", name).Output()
-		if len(out) > 0 {
-			// Simple parsing: buscar inet
+		// IP via ip addr (with timeout)
+		if out := runWithTimeout(runner, CmdTimeoutMedium, "ip", "addr", "show", name); out != "" {
 			re := regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)`)
-			matches := re.FindStringSubmatch(string(out))
+			matches := re.FindStringSubmatch(out)
 			if len(matches) > 1 {
 				n.IPAddress = matches[1]
 			}
@@ -328,29 +374,4 @@ func getNetwork() []NetworkInfo {
 	}
 
 	return result
-}
-
-func parseBlocksToGB(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	blocks, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	// Un block = 512 bytes
-	return int(blocks * 512 / (1000 * 1000 * 1000))
-}
-
-func parseInt64(s string) int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return n
 }

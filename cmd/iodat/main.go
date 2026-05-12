@@ -5,57 +5,80 @@
 // Uso:
 //   iodat                    → genera ioDat_<hostname>_<fecha>.json
 //   iodat --stdout           → imprime JSON a stdout
-//   iodat /ruta/directorio   → guarda en el directorio especificado
+//   iodat --output /ruta     → guarda en el directorio especificado
+//   iodat --version          → muestra la versión
 
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
 	"github.com/ionet-cl/iodat/pkg/collector"
+	"github.com/ionet-cl/iodat/pkg/output"
 )
 
-func main() {
-	recolectarAStdout := false
-	outputDir := ""
+// version se inyecta en tiempo de compilación via ldflags.
+// Ejemplo: go build -ldflags="-X main.version=1.0.0"
+var version = "dev"
 
-	// Parsear argumentos simples
-	for _, arg := range os.Args[1:] {
-		switch arg {
-		case "--stdout", "-s":
-			recolectarAStdout = true
-		case "--help", "-h":
-			fmt.Println("ioDat v1.0.0 — Colector de inventario para ioDesk-3")
-			fmt.Println("")
-			fmt.Println("Uso:")
-			fmt.Println("  iodat                    Genera archivo JSON en el directorio actual")
-			fmt.Println("  iodat --stdout           Imprime JSON a stdout")
-			fmt.Println("  iodat /ruta/dir          Guarda archivo en /ruta/dir")
-			fmt.Println("  iodat --help             Muestra esta ayuda")
-			os.Exit(0)
-		default:
-			// Si es un directorio, usarlo como output
-			if info, err := os.Stat(arg); err == nil && info.IsDir() {
-				outputDir = arg
-			}
+func main() {
+	// Flags
+	toStdout := flag.Bool("stdout", false, "Imprime JSON a stdout en vez de archivo")
+	outputDir := flag.String("output", "", "Directorio donde guardar el archivo JSON")
+	showVersion := flag.Bool("version", false, "Muestra la versión del binario")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "ioDat v%s — Colector de inventario para ioDesk-3\n", version)
+		fmt.Fprintf(os.Stderr, "\nUso:\n")
+		fmt.Fprintf(os.Stderr, "  iodat [flags]\n")
+		fmt.Fprintf(os.Stderr, "  iodat [flags] /ruta/directorio\n")
+		fmt.Fprintf(os.Stderr, "\nFlags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEjemplos:\n")
+		fmt.Fprintf(os.Stderr, "  iodat                   Genera archivo en el directorio actual\n")
+		fmt.Fprintf(os.Stderr, "  iodat --stdout          Imprime JSON a stdout\n")
+		fmt.Fprintf(os.Stderr, "  iodat --output /tmp     Guarda archivo en /tmp\n")
+		fmt.Fprintf(os.Stderr, "  iodat --version         Muestra la versión\n")
+	}
+
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("ioDat v%s\n", version)
+		os.Exit(0)
+	}
+
+	// Argumento posicional: directorio de salida
+	dir := *outputDir
+	if dir == "" && flag.NArg() > 0 {
+		dir = flag.Arg(0)
+	}
+
+	// Validar directorio si se especificó
+	if dir != "" {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			fmt.Fprintf(os.Stderr, "Error: %q no es un directorio válido\n", dir)
+			os.Exit(1)
 		}
 	}
 
 	// Recolectar
 	fmt.Fprintf(os.Stderr, "ioDat: Recolectando información del equipo...\n")
-	inv, err := collector.Run()
+	inv, err := collector.Run(collector.OSCommandRunner{}, collector.OSFileSystem{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ioDat: Advertencia: %v\n", err)
 	}
 
-	if recolectarAStdout {
-		if err := collector.PrintOutput(inv); err != nil {
+	if *toStdout {
+		if err := output.PrintOutput(inv); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		path, hash, err := collector.GenerateOutput(inv, outputDir)
+		path, hash, err := output.GenerateOutput(inv, dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

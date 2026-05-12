@@ -1,4 +1,5 @@
-package collector
+// Package output serializes inventory data to JSON with integrity hashing.
+package output
 
 import (
 	"crypto/sha256"
@@ -9,33 +10,34 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ionet-cl/iodat/pkg/inventory"
 )
 
 // GenerateOutput genera el archivo JSON con hash embebido.
 // outputDir: directorio destino (vacío = directorio actual).
 // Retorna la ruta del archivo generado y el hash SHA-256.
-func GenerateOutput(inv *Inventory, outputDir string) (string, string, error) {
-	// Embed hash (placeholder inicial)
-	inv.CollectorHash = "pending"
-
-	// Serializar a JSON
+//
+// El hash se calcula sobre el contenido JSON con collector_hash="".
+// Luego se reemplaza por el hash real en el archivo final.
+// Para verificar: reemplazar "collector_hash":"<valor>" por
+// "collector_hash":"" en el JSON y comparar el hash.
+func GenerateOutput(inv *inventory.Inventory, outputDir string) (string, string, error) {
+	inv.CollectorHash = ""
 	data, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return "", "", fmt.Errorf("error serializando: %w", err)
 	}
 
-	// Calcular hash del contenido
 	hash := sha256.Sum256(data)
 	hashStr := hex.EncodeToString(hash[:])
 
-	// Re-serializar con hash real
 	inv.CollectorHash = hashStr
 	data, err = json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return "", "", fmt.Errorf("error re-serializando: %w", err)
 	}
 
-	// Generar nombre de archivo
 	hostname := inv.Hostname
 	if hostname == "" || hostname == "DESCONOCIDO" {
 		hostname = "unknown"
@@ -43,7 +45,6 @@ func GenerateOutput(inv *Inventory, outputDir string) (string, string, error) {
 	timestamp := time.Now().Format("20060102_150405")
 	filename := fmt.Sprintf("ioDat_%s_%s.json", hostname, timestamp)
 
-	// Determinar ruta de salida
 	outputPath := filename
 	if outputDir != "" {
 		outputPath = filepath.Join(outputDir, filename)
@@ -66,7 +67,10 @@ func GenerateOutput(inv *Inventory, outputDir string) (string, string, error) {
 }
 
 // PrintOutput escribe el JSON a stdout (útil para piping).
-func PrintOutput(inv *Inventory) error {
+// collector_hash aparece vacío en stdout ya que el hash solo es
+// significativo en el archivo generado por GenerateOutput.
+func PrintOutput(inv *inventory.Inventory) error {
+	inv.CollectorHash = ""
 	data, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error serializando: %w", err)
@@ -76,7 +80,7 @@ func PrintOutput(inv *Inventory) error {
 }
 
 // ReadFromFile lee un archivo JSON de inventario y lo parsea.
-func ReadFromFile(path string) (*Inventory, error) {
+func ReadFromFile(path string) (*inventory.Inventory, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("error abriendo archivo: %w", err)
@@ -88,7 +92,7 @@ func ReadFromFile(path string) (*Inventory, error) {
 		return nil, fmt.Errorf("error leyendo archivo: %w", err)
 	}
 
-	var inv Inventory
+	var inv inventory.Inventory
 	if err := json.Unmarshal(data, &inv); err != nil {
 		return nil, fmt.Errorf("error parseando JSON: %w", err)
 	}
