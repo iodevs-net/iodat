@@ -180,6 +180,13 @@ make run      # Ejecutar localmente
 
 ---
 
+## Créditos
+
+Desarrollado por **Leonardo Vergara** — [iodevs.net](https://iodevs.net)
+para **IONET SpA** — [ionet.cl](https://ionet.cl)
+
+---
+
 ## Reporte de vulnerabilidades
 
-Ver [SECURITY.md](SECURITY.md). Vulnerabilidades críticas: correo a seguridad@ionet.cl (PGP: `C8B4 9A2F 3E71 D506`). No abrir issue público para vulnerabilidades de seguridad.
+Ver [SECURITY.md](SECURITY.md). Vulnerabilidades críticas: correo a soporte@ionet.cl. No abrir issue público para vulnerabilidades de seguridad.

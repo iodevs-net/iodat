@@ -38,12 +38,12 @@ ioDat está diseñado bajo el principio de **mínimo privilegio absoluto**:
 Si descubres una vulnerabilidad de seguridad en ioDat:
 
 1. **No abras un issue público.**
-2. Envía un correo a **seguridad@ionet.cl** con:
+2. Envía un correo a **soporte@ionet.cl** con:
    - Descripción detallada del hallazgo
    - Pasos para reproducir
    - Impacto potencial
    - Sugerencia de mitigación (opcional)
-3. Opcional: cifra con PGP `C8B4 9A2F 3E71 D506`
+
 
 ### Tiempos de respuesta
 
