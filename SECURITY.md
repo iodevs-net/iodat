@@ -73,12 +73,13 @@ Cada release de ioDat incluye:
 
 ```bash
 # Verificar release
-curl -LO https://github.com/ionet-cl/iodat/releases/download/v1.0.0/SHA256SUMS
-curl -LO https://github.com/ionet-cl/iodat/releases/download/v1.0.0/iodat-v1.0.0-linux-amd64
+# Descargar desde https://github.com/iodevs-net/iodat
+curl -LO https://github.com/iodevs-net/iodat/releases/download/v1.0.0/SHA256SUMS
+curl -LO https://github.com/iodevs-net/iodat/releases/download/v1.0.0/iodat-v1.0.0-linux-amd64
 sha256sum -c SHA256SUMS 2>&1 | grep iodat
 
 # Verificar código fuente
-git clone https://github.com/ionet-cl/iodat.git
+git clone https://github.com/iodevs-net/iodat.git
 cd iodat
 git verify-tag v1.0.0
 ```

@@ -77,7 +77,7 @@ sha256sum iodat-v1.0.0-linux-amd64
 <details>
 <summary><strong>Instalación</strong> — descargar y verificar</summary>
 
-Descargar desde [releases](https://github.com/ionet-cl/iodat/releases).
+Descargar desde el [repositorio](https://github.com/iodevs-net/iodat).
 
 ```bash
 # Verificar integridad
