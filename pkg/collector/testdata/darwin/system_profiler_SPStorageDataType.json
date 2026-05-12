@@ -1,0 +1,9 @@
+{
+  "SPStorageDataType" : [ {
+    "_name" : "APPLE SSD AP1024R",
+    "mount_point" : "/",
+    "size" : "994.66 GB",
+    "file_system" : "APFS",
+    "medium_type" : "SSD"
+  } ]
+}

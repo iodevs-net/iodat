@@ -1,0 +1,12 @@
+{
+  "SPDisplaysDataType" : [ {
+    "_name" : "SPDisplaysDataType",
+    "sppci_model" : "Apple M1 Pro",
+    "spdisplays_vram" : "16384 MB",
+    "spdisplays_ndrvs" : [ {
+      "_name" : "Built-in Retina Display",
+      "_spdisplays_resolution" : "3456x2234",
+      "_spdisplays_display_id" : "F0123456"
+    } ]
+  } ]
+}

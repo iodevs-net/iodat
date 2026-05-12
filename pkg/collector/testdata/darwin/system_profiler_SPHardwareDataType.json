@@ -1,0 +1,10 @@
+{
+  "SPHardwareDataType" : [ {
+    "_name" : "SPHardwareDataType",
+    "machine_model" : "MacBookPro18,3",
+    "machine_name" : "MacBook Pro (16-inch, 2021)",
+    "os_version" : "macOS 14.5 (23F79)",
+    "serial_number" : "FGHIJKLMNOPQ",
+    "platform_UUID" : "12345678-1234-1234-1234-123456789ABC"
+  } ]
+}
